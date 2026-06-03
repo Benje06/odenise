@@ -10,6 +10,7 @@ set(ODENISE_CORE_SOURCES
     engine.cpp          # orchestration, double-buffering, registre
     loader.cpp          # chargement dynamique des modules (dlopen/LoadLibrary)
     backends/backend_cpu.cpp   # repli toujours present
+    tools/logger.cc            # LogManager (sans dependance GLib)
 )
 
 # Backend + chaine STFT CUDA : seulement si CUDA actif.
@@ -37,7 +38,7 @@ target_include_directories(odenise_core
 target_compile_features(odenise_core PUBLIC cxx_std_20)
 
 # Marque la phase de compilation de la lib (pour dllexport vs dllimport).
-target_compile_definitions(odenise_core PRIVATE ODENISE_BUILD_LIBRARY=1)
+target_compile_definitions(odenise_core PRIVATE ODENISE_BUILD_LIBRARY=1 LOGGER_EXPORTS=1)
 
 # --- CUDA -------------------------------------------------------------------
 if(ODENISE_HAVE_CUDA)

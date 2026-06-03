@@ -1,6 +1,7 @@
 // engine.cpp -- orchestration du moteur (STUB minimal, etape 1).
 #include "ns_engine.h"
 #include "module_registry.h"
+#include "tools/logger.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -8,20 +9,33 @@
 namespace ns {
 
 namespace {
-// Dossier de modules : env var > a cote du binaire > chemin d'install.
+// Dossier de modules : env var > "modules" relatif. Lecture portable de
+// l'environnement (evite getenv deprecie sous MSVC : C4996).
 std::filesystem::path moduleDir() {
+#if defined(_WIN32)
+    char*  buf = nullptr;
+    size_t len = 0;
+    if (_dupenv_s(&buf, &len, "ODENISE_MODULE_PATH") == 0 && buf) {
+        std::filesystem::path p = buf;
+        std::free(buf);
+        return p;
+    }
+#else
     if (const char* e = std::getenv("ODENISE_MODULE_PATH"))
         return e;
-    return "modules";   // relatif au repertoire courant pour l'instant
+#endif
+    return "modules";
 }
 } // namespace
 
-// Implementation neutre : satisfait l'interface, ne traite rien encore.
 class EngineImpl final : public Engine {
 public:
-    explicit EngineImpl(const EngineCaps& caps, const RuntimeConfig& cfg)
+    EngineImpl(const EngineCaps& caps, const RuntimeConfig& cfg)
         : caps_(caps), cfg_(cfg) {
-        registry_.scanDirectory(moduleDir());
+        const auto dir = moduleDir();
+        const int n = registry_.scanDirectory(dir);
+        LOG(_("engine: created (n=") + std::to_string(cfg_.n)
+            + _(", modules loaded: ") + std::to_string(n) + ")");
     }
 
     int latencySamples() const noexcept override { return cfg_.n; }
@@ -59,8 +73,8 @@ public:
     Spectrum spectrum() const override { return {}; }
 
 private:
-    EngineCaps           caps_;
-    RuntimeConfig        cfg_;
+    EngineCaps             caps_;
+    RuntimeConfig          cfg_;
     detail::ModuleRegistry registry_;
 };
 

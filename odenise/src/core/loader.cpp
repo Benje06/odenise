@@ -5,12 +5,11 @@
 //  dlopen/LoadLibrary : ouvre les .so/.dll d'un dossier, resout le symbole
 //  d'entree, verifie l'ABI, et conserve la table de fonctions du module.
 //
-//  Diagnostics de chargement ecrits sur stderr (load-time uniquement, hors
-//  chemin temps reel). Un logger injectable pourra remplacer fprintf plus tard.
+//  Diagnostics via le LogManager (LOG / LOG_ERR), au format error(from,what,why).
 // ============================================================================
 #include "module_registry.h"
+#include "tools/logger.h"
 
-#include <cstdio>
 #include <system_error>
 
 // ---------------------------------------------------------------------------
@@ -19,19 +18,19 @@
 #if defined(_WIN32)
   #include <windows.h>
   namespace {
-    void* dl_open(const char* path)            { return (void*)LoadLibraryA(path); }
-    void* dl_sym (void* h, const char* name)   { return (void*)GetProcAddress((HMODULE)h, name); }
-    void  dl_close(void* h)                    { if (h) FreeLibrary((HMODULE)h); }
-    const char* dl_error()                     { return "LoadLibrary/GetProcAddress a echoue"; }
+    void* dl_open(const char* path)          { return (void*)LoadLibraryA(path); }
+    void* dl_sym (void* h, const char* name) { return (void*)GetProcAddress((HMODULE)h, name); }
+    void  dl_close(void* h)                  { if (h) FreeLibrary((HMODULE)h); }
+    std::string dl_error()                   { return "LoadLibrary/GetProcAddress error"; }
     constexpr const char* kModuleExt = ".dll";
   }
 #else
   #include <dlfcn.h>
   namespace {
-    void* dl_open(const char* path)            { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
-    void* dl_sym (void* h, const char* name)   { return dlsym(h, name); }
-    void  dl_close(void* h)                    { if (h) dlclose(h); }
-    const char* dl_error()                     { const char* e = dlerror(); return e ? e : "erreur inconnue"; }
+    void* dl_open(const char* path)          { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
+    void* dl_sym (void* h, const char* name) { return dlsym(h, name); }
+    void  dl_close(void* h)                  { if (h) dlclose(h); }
+    std::string dl_error()                   { const char* e = dlerror(); return e ? e : "unknown error"; }
     #if defined(__APPLE__)
       constexpr const char* kModuleExt = ".dylib";
     #else
@@ -44,7 +43,6 @@ namespace ns::detail {
 
 namespace {
 
-// Convertit l'entier 'kind' de la frontiere C en enum, en validant la plage.
 bool kindFromInt(int k, ModuleKind& out) {
     switch (k) {
         case static_cast<int>(ModuleKind::ComputeBackend): out = ModuleKind::ComputeBackend; return true;
@@ -56,7 +54,6 @@ bool kindFromInt(int k, ModuleKind& out) {
     }
 }
 
-// Copie les metadonnees C du module dans un ModuleInfo C++ (chaines copiees).
 ModuleInfo toModuleInfo(const OdeniseModuleInfoC& c, ModuleKind kind) {
     ModuleInfo m;
     m.id          = c.id;
@@ -70,7 +67,6 @@ ModuleInfo toModuleInfo(const OdeniseModuleInfoC& c, ModuleKind kind) {
 } // namespace
 
 ModuleRegistry::~ModuleRegistry() {
-    // Ferme les bibliotheques dans l'ordre inverse du chargement.
     for (auto it = modules_.rbegin(); it != modules_.rend(); ++it)
         dl_close(it->handle);
     modules_.clear();
@@ -81,48 +77,42 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
 
     void* handle = dl_open(path.c_str());
     if (!handle) {
-        std::fprintf(stderr, "[odenise] echec ouverture '%s' : %s\n",
-                     path.c_str(), dl_error());
+        LOG_ERR(error("loader", _("cannot open module: ") + path, dl_error()));
         return false;
     }
 
     auto entry = reinterpret_cast<OdeniseModuleEntryFn>(
         dl_sym(handle, ODENISE_MODULE_ENTRY_SYMBOL));
     if (!entry) {
-        std::fprintf(stderr, "[odenise] '%s' : symbole '%s' absent (pas un module ?)\n",
-                     path.c_str(), ODENISE_MODULE_ENTRY_SYMBOL);
+        LOG_ERR(error("loader", path, std::string(_("missing entry symbol ")) + ODENISE_MODULE_ENTRY_SYMBOL));
         dl_close(handle);
         return false;
     }
 
     const OdeniseModuleVTable* vt = entry();
     if (!vt) {
-        std::fprintf(stderr, "[odenise] '%s' : table de fonctions nulle\n", path.c_str());
+        LOG_ERR(error("loader", path, _("null vtable returned")));
         dl_close(handle);
         return false;
     }
 
-    // Verification d'ABI : non negociable.
     if (vt->abi_version != kAbiVersion) {
-        std::fprintf(stderr,
-                     "[odenise] '%s' : ABI %d incompatible (attendu %d) -- ignore\n",
-                     path.c_str(), vt->abi_version, kAbiVersion);
+        LOG_ERR(error("loader", path,
+            std::string(_("incompatible ABI ")) + std::to_string(vt->abi_version)
+            + _(" (expected ") + std::to_string(kAbiVersion) + ")"));
         dl_close(handle);
         return false;
     }
 
-    // Validation minimale des pointeurs indispensables.
     if (!vt->create || !vt->destroy || !vt->process) {
-        std::fprintf(stderr, "[odenise] '%s' : table incomplete (create/destroy/process)\n",
-                     path.c_str());
+        LOG_ERR(error("loader", path, _("incomplete vtable (create/destroy/process)")));
         dl_close(handle);
         return false;
     }
 
     ModuleKind kind;
     if (!kindFromInt(vt->info.kind, kind)) {
-        std::fprintf(stderr, "[odenise] '%s' : famille de module inconnue (%d)\n",
-                     path.c_str(), vt->info.kind);
+        LOG_ERR(error("loader", path, _("unknown module kind ") + std::to_string(vt->info.kind)));
         dl_close(handle);
         return false;
     }
@@ -132,6 +122,7 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
     lm.vtable = vt;
     lm.info   = toModuleInfo(vt->info, kind);
     lm.path   = path;
+    LOG(_("loader: loaded module '") + lm.info.name + "' (" + path + ")");
     modules_.push_back(std::move(lm));
     return true;
 }
@@ -139,8 +130,7 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
 int ModuleRegistry::scanDirectory(const std::filesystem::path& dir) {
     std::error_code ec;
     if (!std::filesystem::is_directory(dir, ec)) {
-        std::fprintf(stderr, "[odenise] dossier de modules introuvable : '%s'\n",
-                     dir.string().c_str());
+        LOG(_("loader: module directory not found: ") + dir.string());
         return 0;
     }
 
@@ -172,7 +162,7 @@ const OdeniseModuleVTable* ModuleRegistry::find(ModuleKind kind, int id) const {
 TestResult ModuleRegistry::selfTest(ModuleKind kind, int id) const {
     const OdeniseModuleVTable* vt = find(kind, id);
     if (!vt || !vt->self_test)
-        return TestResult{ false, "module ou self-test absent" };
+        return TestResult{ false, _("module or self-test missing") };
 
     OdeniseTestResultC r = vt->self_test();
     TestResult out;

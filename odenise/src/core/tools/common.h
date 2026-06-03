@@ -24,7 +24,11 @@
  * ----------------------------------------------------------------------------
  */
 
- /* Define by Operating System : 
+ /* 
+  * Derive des outils communs de gxinterface, nettoye pour le coeur reutilisable :
+  *
+  * Fournit : DS / EOL, tostr<T>, str_to_ascii, str_const_hash + ""_hash,
+  *           get_time(), error(from,what,why), help_options/help_format, init_nls().Define by Operating System : 
   * 	- include
   * 	- constant :
   * 		DS		Directory Separator
@@ -40,12 +44,8 @@
 
     #ifdef HAVE_CONFIG_H
         #include <config.h>
-    #else
-        #define MOD_DIRECTORY PROGRAMNAME_MOD_DIR
-        #define MOD_IMG_DIR PROGRAMNAME_IMG_DIR
-        #define MOD_DATA_DIRECTORY PROGRAMNAME_DATA_DIR
-        #define MOD_UI_DIRECTORY PROGRAMNAME_UI_DIR
     #endif
+
     #include "debug.h"
 
     #include <iostream>
@@ -59,51 +59,41 @@
     #include <vector>
     #include <getopt.h>
 
-    #if defined(__WIN32) || defined(__MINGW32__)
+    #if defined(_WIN32) || defined(__MINGW32__)
         #define WIN32_LEAN_AND_MEAN
         #include <windows.h>
         #undef ERROR
         #undef IN
         #undef OUT
-        #undef WINDING
-        #undef IGNORE
         #undef near
-        #undef DOUBLE_CLICK
         #define DS "\\"
-        /* CR+LF */
         #undef EOL
         #define EOL "\r\n"
         #include <system_error>
         #include <locale>
         #include <cstdlib>
-        /*typedef unsigned int uint;
-        typedef unsigned char u_char;
-        typedef unsigned long ulong;*/
-    #endif
-    #ifdef __linux__
-        /* LF */
-        #define EOL ('\n')
-        /* directory separator */
-        #define DS ('/')
-    #endif
-    #ifdef G_OS_UNIX
-        /* LF */
-        #define EOL ('\n')
-        #define DS ('/')
-    #endif
-    #ifdef G_OS_OSX
-        /* LF */
-        #define EOL ('\n')
-        #define DS ('/')
-    #endif
-    #ifdef G_OS_MAC
-        /* CR */
-        #define EOL ('\r')
-        #define DS ('/')
+    #else
+        #define EOL ("\n")
+        #define DS  ("/")
     #endif
 
+    /*** i18n (gettext pur, sans glibmm) ***/
     #ifdef ENABLE_NLS
         #include <libintl.h>
+        #include <locale>
+        #ifndef _
+            #define _(String)  gettext(String)
+        #endif
+        #ifndef N_
+            #define N_(String) (String)
+        #endif
+    #else
+        #ifndef _
+            #define _(String)  (String)
+        #endif
+        #ifndef N_
+            #define N_(String) (String)
+        #endif
     #endif
 
 	/*** CONSTANTS ***/
@@ -119,56 +109,56 @@
     /*** String Convert ***/
     /* convert to string any type of number */
     template <class paramType>
-    std::ustring tostr(paramType val) {
+    std::string tostr(paramType val) {
         std::ostringstream strm;
         strm << val;
         return strm.str();
     };
-    /* convert glib::ustring to ascii-7bit */
-    inline std::string str_to_ascii(const std::ustring& input) {
+    /* keep only 7-bit ASCII, replace the rest with '?' */
+    inline std::string str_to_ascii(const std::string& input) {
         std::string result;
-        for( auto ch : input ){
-            if( ch < 128 ){ // Keep ASCII characters
-                result += ch;
-            } else { // Replace non-ASCII characters with '?'
+        for( unsigned char ch : input ){
+            if( ch < 128 ){
+                result += static_cast<char>(ch);
+            } else {
                 result += '?';
             };
         };
         return result;
     };
-    // used to hash MACRO value to array (ex: use to convert MACRO int type of snd_seq_event_type to text message with the name of the macro)
+    /* compile-time hash (ex: switch/case sur des chaines) */
     constexpr std::size_t str_const_hash(const char* str) {
-        // Implement a simple compile-time hash function
         std::size_t h = 0;
         for (; *str; ++str) {
-            h = h * 31 + *str;
+            h = h * 31 + static_cast<std::size_t>(*str);
         };
         return h;
     };
     constexpr std::size_t operator""_hash(const char* str, std::size_t) {
         return str_const_hash(str);
     };
+    /* horodatage thread-safe "YYYY-MM-DD HH:MM:SS" */
     inline std::string get_time(){
         auto now = std::chrono::system_clock::now();
         std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-        
-        std::tm tm_buffer;
-        #if defined(__WIN32) || defined(__MINGW32__)
+        std::tm tm_buffer{};
+        #if defined(_WIN32) || defined(__MINGW32__)
             localtime_s(&tm_buffer, &now_time);
         #else
-            localtime_r(&now_time, &tm_buffer);  // POSIX thread-safe version
+            localtime_r(&now_time, &tm_buffer);
         #endif
         std::ostringstream ostr;
         ostr << std::put_time(&tm_buffer, "%Y-%m-%d %H:%M:%S");
         return ostr.str();
     };
-   inline std::string error(const std::string& from, const std::string& what, const std::string& why){
-        std::string msg = _("From: ") + from + "\n\t"
+    /* message d'erreur standard : From / What / Reason */
+    inline std::string error(const std::string& from, const std::string& what, const std::string& why){
+        std::string msg = std::string(_("From: ")) + from + "\n\t"
                         + what + "\n\t"
-                        +_("Reason => ") + why;
+                        + std::string(_("Reason => ")) + why;
         return msg;
     };
-    
+
     /*** HELP FORMATTING ***/
     /* One option line in a --help output.
      *   short_opt   : single short letter, or 0 if no short form
@@ -199,7 +189,7 @@
         static bool header_done = false;
         std::string msg;
         if (!header_done) {
-            msg = _("Usage: ") + prog_name + _(" [OPTIONS]") + "\n\n"
+            msg = std::string(_("Usage: ")) + prog_name + _(" [OPTIONS]") + "\n\n"
                 + _("Options:") + "\n";
             header_done = true;
         }
@@ -231,10 +221,14 @@
     inline void init_nls(){
         #ifdef ENABLE_NLS
             setlocale(LC_ALL, "");
-            std::locale::global(std::locale(""));
-            textdomain(GETTEXT_PACKAGE);
-            bindtextdomain(GETTEXT_PACKAGE, PROGRAMNAME_LOCALEDIR);
-            bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
+            try { std::locale::global(std::locale("")); } catch (...) { /* locale absente : ignore */ }
+            #ifdef GETTEXT_PACKAGE
+                textdomain(GETTEXT_PACKAGE);
+                #ifdef LOCALEDIR
+                    bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR);
+                #endif
+                bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
+            #endif
         #endif
     }
 

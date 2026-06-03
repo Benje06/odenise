@@ -1,3 +1,7 @@
+/* ----------------------------------------------------------------------------
+ * Logger / LogManager -- implementation.
+ * ----------------------------------------------------------------------------
+ */
 #include "logger.h"
 
 /*** LOGGER ***/
@@ -7,16 +11,16 @@ void Logger::set_log_level(unsigned int lvl){
 };
 void Logger::log(const std::string& msg){
     std::lock_guard<std::mutex> lock(log_mutex);
-    if( log_level == 0){
+    if( log_level == 0 ){
         return;
-    }else if( log_level >= 1){    
+    }else if( log_level >= 1 ){
         if( log_file.is_open() ){
             log_file << msg << std::endl;
         };
-        if( log_level >= 2){
+        if( log_level >= 2 ){
             std::cout << msg << std::endl;
         };
-    }
+    };
 };
 void Logger::log_error(const std::string& err_msg){
     std::lock_guard<std::mutex> lock(log_mutex);
@@ -27,8 +31,8 @@ void Logger::log_error(const std::string& err_msg){
         log_file << "*************************************************************** " << std::endl;
         log_file << "            " << std::endl;
     };
-    if( log_level >= 2){
-        std::cerr <<  "*** " << _("ERROR") << " *** " << err_msg << std::endl;
+    if( log_level >= 2 ){
+        std::cerr << "*** " << _("ERROR") << " *** " << err_msg << std::endl;
     };
 };
 void Logger::flush(){
@@ -51,17 +55,16 @@ void LogManager::add_handler(std::shared_ptr<Logger> handler){
     handlers.push_back(handler);
 };
 void LogManager::set_log_level(unsigned int log_level){
-    if( log_level <= 2){
-        {
-            std::lock_guard<std::mutex> lock(manager_mutex);
-            msg = _("Switching to log level: ") + std::to_string(log_level);
-            for (auto& handler : handlers) {
-                handler->set_log_level(log_level);
-                handler->log( msg );
-            };
+    if( log_level <= 2 ){
+        std::lock_guard<std::mutex> lock(manager_mutex);
+        msg = std::string(_("Switching to log level: ")) + std::to_string(log_level);
+        for (auto& handler : handlers) {
+            handler->set_log_level(log_level);
+            handler->log( msg );
         };
     }else{
-        std::string lvlmsg = _("Log Level: ") + std::to_string(log_level) + _(" is not a valid value, shoudl be between 0(disable), 1(log file) and 2(log file + console).");
+        std::string lvlmsg = std::string(_("Log Level: ")) + std::to_string(log_level)
+            + _(" is not a valid value, should be between 0(disable), 1(log file) and 2(log file + console).");
         log_error( lvlmsg );
     };
 };
