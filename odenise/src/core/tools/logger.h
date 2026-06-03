@@ -46,7 +46,7 @@
             void flush();
     };
 
-    class LOGGER LogManager {
+    class LogManager {
     public:
         LOGGER static LogManager& instance();
         LOGGER void add_handler(std::shared_ptr<Logger>);
