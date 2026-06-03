@@ -1,0 +1,28 @@
+#List of source files containing translatable strings.
+
+#Main application
+src/main.cc
+src/main.h
+src/gemod.cc
+src/gemod.h
+src/gxmodule.cc
+src/gxmodule.h
+src/gxinterface.cc
+src/gxinterface.h
+src/common.h
+src/logger.cc
+
+#ui
+data/ui/interface.ui
+data/ui/interface_4.8.ui
+data/launcher/gxinterface.desktop.in
+
+
+
+
+
+
+
+
+
+

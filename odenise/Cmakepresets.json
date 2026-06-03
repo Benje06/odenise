@@ -1,0 +1,128 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux (GCC/Clang)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ODENISE_WITH_CUDA": "ON",
+        "ODENISE_BUILD_PLUGIN": "OFF",
+        "ODENISE_BUILD_MODULES": "ON",
+        "ODENISE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-core",
+      "displayName": "Linux -- coeur seul (etape 1)",
+      "inherits": "linux",
+      "cacheVariables": {
+        "ODENISE_WITH_CUDA": "OFF",
+        "ODENISE_BUILD_MODULES": "OFF"
+      }
+    },
+    {
+      "name": "ucrt64",
+      "displayName": "Windows MSYS2 UCRT64 (GCC)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "D:/crosscompile/msys2/ucrt64/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "D:/crosscompile/msys2/ucrt64/bin/g++.exe",
+        "ODENISE_WITH_CUDA": "OFF",
+        "ODENISE_BUILD_PLUGIN": "OFF",
+        "ODENISE_BUILD_MODULES": "ON",
+        "ODENISE_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "ucrt64-core",
+      "displayName": "UCRT64 -- coeur seul (etape 1)",
+      "inherits": "ucrt64",
+      "cacheVariables": {
+        "ODENISE_BUILD_MODULES": "OFF"
+      }
+    },
+    {
+      "name": "windows-msvc-cuda",
+      "displayName": "Windows MSVC + CUDA 12.9 (GPU, Pascal->Blackwell)",
+      "cacheVariables": {
+        "ODENISE_WITH_CUDA": "ON",
+        "ODENISE_BUILD_PLUGIN": "OFF",
+        "ODENISE_BUILD_MODULES": "ON",
+        "ODENISE_BUILD_TESTS": "ON",
+        "CMAKE_CUDA_ARCHITECTURES": "61;75;86;89;90",
+        "CMAKE_CUDA_COMPILER": "D:/nvidia/bin/nvcc.exe",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "vendor": {
+        "note": "Generateur Visual Studio 17 2022 + toolset v143 : combinaison officiellement supportee par CUDA 12.9. MSBuild gere CUDA proprement (pas le bug -Fd,-FS de Ninja+nvcc). Multi-config : build en --config Release. Supprimer build/ apres changement de generateur."
+      },
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "architecture": "x64",
+      "toolset": "v143"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux",
+      "configurePreset": "linux"
+    },
+    {
+      "name": "linux-core",
+      "configurePreset": "linux-core"
+    },
+    {
+      "name": "ucrt64",
+      "configurePreset": "ucrt64"
+    },
+    {
+      "name": "ucrt64-core",
+      "configurePreset": "ucrt64-core"
+    },
+    {
+      "name": "windows-msvc-cuda",
+      "configurePreset": "windows-msvc-cuda",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux",
+      "configurePreset": "linux"
+    },
+    {
+      "name": "linux-core",
+      "configurePreset": "linux-core"
+    },
+    {
+      "name": "ucrt64",
+      "configurePreset": "ucrt64"
+    },
+    {
+      "name": "ucrt64-core",
+      "configurePreset": "ucrt64-core"
+    },
+    {
+      "name": "windows-msvc-cuda",
+      "configurePreset": "windows-msvc-cuda",
+      "configuration": "Release"
+    }
+  ]
+}

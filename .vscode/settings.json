@@ -1,0 +1,6 @@
+{
+    "cmake.sourceDirectory": "D:/crosscompile/msys2/home/jerome/odenise/odenise",
+    "cmake.environment": {
+        "PATH": "D:/Telechargements/ninja-win;${env:PATH}"
+    },
+}
