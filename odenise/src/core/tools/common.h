@@ -57,7 +57,9 @@
     #include <sstream>
     #include <string>
     #include <vector>
-    #include <getopt.h>
+    #ifndef _MSC_VER
+        #include <getopt.h>   /* POSIX : absent du compilateur MSVC */
+    #endif
 
     #if defined(_WIN32) || defined(__MINGW32__)
         #define WIN32_LEAN_AND_MEAN
