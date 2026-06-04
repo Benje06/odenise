@@ -3,15 +3,31 @@
 #include "module_registry.h"
 #include "tools/logger.h"
 
-#include <cstdlib>
-#include <filesystem>
+#include <cstdlib>      // std::getenv / std::free / _dupenv_s
+#include <filesystem>   // std::filesystem::path (dependance directe : IWYU)
 
 namespace ns {
 
 namespace {
-// Dossier de modules : env var > "modules" relatif. Lecture portable de
-// l'environnement (evite getenv deprecie sous MSVC : C4996).
+// Dossier de modules : env var > "modules" a cote de l'executable.
+// Sous Windows, on localise l'exe via GetModuleFileName ; sous Linux via
+// /proc/self/exe. Le chemin relatif au dossier courant ne marche pas
+// quand l'IDE lance l'exe depuis la racine du projet.
+std::filesystem::path exeDir() {
+#if defined(_WIN32)
+    char buf[MAX_PATH] = {};
+    GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    return std::filesystem::path(buf).parent_path();
+#else
+    std::error_code ec;
+    auto p = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) return p.parent_path();
+    return std::filesystem::current_path();   // repli
+#endif
+}
+
 std::filesystem::path moduleDir() {
+    // 1. Variable d'environnement (prioritaire, pour les tests manuels)
 #if defined(_WIN32)
     char*  buf = nullptr;
     size_t len = 0;
@@ -24,7 +40,12 @@ std::filesystem::path moduleDir() {
     if (const char* e = std::getenv("ODENISE_MODULE_PATH"))
         return e;
 #endif
-    return "modules";
+
+    // 2. Convention dx7interface (build et deploy, identique Linux et Windows) :
+    //    exe dans <prefix>/usr/bin/ (ou bin/)
+    //    modules dans <prefix>/usr/share/odenise/<version>/modules/
+    //    On remonte de bin/ vers le prefix, puis on descend dans share/.
+    return exeDir() / ".." / "share" / ODENISE_VERSION_DIR / "modules";
 }
 } // namespace
 
@@ -36,20 +57,50 @@ public:
         const int n = registry_.scanDirectory(dir);
         LOG(_("engine: created (n=") + std::to_string(cfg_.n)
             + _(", modules loaded: ") + std::to_string(n) + ")");
+
+        // Instanciation du module de suppression actif.
+        bindSuppression(cfg_.suppression_id);
+    }
+
+    ~EngineImpl() override {
+        releaseSuppression();
     }
 
     int latencySamples() const noexcept override { return cfg_.n; }
 
     Status reconfigure(const RuntimeConfig& cfg, ApplyResult& how) override {
+        const bool sup_changed = (cfg.suppression_id != cfg_.suppression_id);
         cfg_ = cfg;
         how  = ApplyResult::Hot;
+
+        if (sup_changed)
+            bindSuppression(cfg_.suppression_id);
+
         return Status::Ok;
     }
 
     BackendCaps backendCaps() const override { return {}; }
 
-    Status process(std::span<const TrackIO>, int) noexcept override {
-        return Status::Unsupported;   // pas de DSP a l'etape 1
+    Status process(std::span<const TrackIO> tracks,
+                   int num_frames) noexcept override {
+        if (!suppression_vt_ || !suppression_inst_)
+            return Status::Unsupported;
+
+        for (const auto& t : tracks) {
+            if (!t.in || !t.out || t.in_channels < 1)
+                return Status::InvalidArg;
+
+            OdeniseProcessCtx ctx;
+            ctx.in           = t.in;
+            ctx.out          = t.out;
+            ctx.in_channels  = t.in_channels;
+            ctx.num_frames   = num_frames;
+
+            int rc = suppression_vt_->process(suppression_inst_, &ctx);
+            if (rc != static_cast<int>(Status::Ok))
+                return static_cast<Status>(rc);
+        }
+        return Status::Ok;
     }
 
     Status setParam(ParamId, float) noexcept override { return Status::Ok; }
@@ -73,9 +124,36 @@ public:
     Spectrum spectrum() const override { return {}; }
 
 private:
-    EngineCaps             caps_;
-    RuntimeConfig          cfg_;
-    detail::ModuleRegistry registry_;
+    void releaseSuppression() {
+        if (suppression_vt_ && suppression_inst_) {
+            suppression_vt_->destroy(suppression_inst_);
+            suppression_inst_ = nullptr;
+        }
+        suppression_vt_ = nullptr;
+    }
+
+    void bindSuppression(int id) {
+        releaseSuppression();
+        suppression_vt_ = registry_.find(ModuleKind::Suppression, id);
+        if (!suppression_vt_) {
+            LOG(_("engine: no suppression module with id ") + std::to_string(id));
+            return;
+        }
+        suppression_inst_ = suppression_vt_->create(caps_.sample_rate, caps_.n_max);
+        if (!suppression_inst_) {
+            LOG_ERR(error("engine", _("suppression module create failed"),
+                          _("id=") + std::to_string(id)));
+            suppression_vt_ = nullptr;
+            return;
+        }
+        LOG(_("engine: bound suppression module id=") + std::to_string(id));
+    }
+
+    EngineCaps                 caps_;
+    RuntimeConfig              cfg_;
+    detail::ModuleRegistry     registry_;
+    const OdeniseModuleVTable* suppression_vt_   = nullptr;
+    OdeniseModuleInstance      suppression_inst_  = nullptr;
 };
 
 std::unique_ptr<Engine> createEngine(const EngineCaps& caps,
