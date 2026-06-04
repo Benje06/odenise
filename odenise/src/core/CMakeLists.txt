@@ -1,20 +1,14 @@
 # ============================================================================
-#  src/core/CMakeLists.txt -- libodenise : le coeur DSP/CUDA.
+#  src/core/CMakeLists.txt -- libodenise : le coeur DSP.
 #  Bibliotheque PARTAGEE reutilisable. ZERO dependance JUCE/gtkmm/GLib.
+#  ZERO dependance CUDA : tout le calcul GPU est dans des modules dynamiques.
 # ============================================================================
 
 set(ODENISE_CORE_SOURCES
     engine.cpp
     loader.cpp
-    backends/backend_cpu.cpp
     tools/logger.cc
 )
-
-if(ODENISE_HAVE_CUDA)
-    list(APPEND ODENISE_CORE_SOURCES
-        stft_chain.cu
-        backends/backend_cuda.cu)
-endif()
 
 add_library(odenise_core SHARED ${ODENISE_CORE_SOURCES})
 set_target_properties(odenise_core PROPERTIES
@@ -34,14 +28,6 @@ target_compile_definitions(odenise_core PRIVATE
     ODENISE_BUILD_LIBRARY=1
     LOGGER_EXPORTS=1
     ODENISE_VERSION_DIR="${ODENISE_VERSION_DIR}")
-
-# --- CUDA ---
-if(ODENISE_HAVE_CUDA)
-    target_compile_definitions(odenise_core PUBLIC ODENISE_HAVE_CUDA=1)
-    target_link_libraries(odenise_core PUBLIC CUDA::cufft)
-else()
-    target_compile_definitions(odenise_core PUBLIC ODENISE_HAVE_CUDA=0)
-endif()
 
 # libdl sous Linux
 if(UNIX AND NOT APPLE)

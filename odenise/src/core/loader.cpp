@@ -75,44 +75,70 @@ ModuleRegistry::~ModuleRegistry() {
 bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
     const std::string path = file.string();
 
+    // Identification du module pour les diagnostics : nom de fichier + sous-dossier
+    // scanne (= la famille presumee : "suppression", "backends", ...). Avant la
+    // validation du kind (plus bas), on ne dispose que de ces indices de chemin.
+    const std::string fname  = file.filename().string();
+    const std::string subdir = file.parent_path().filename().string();
+    std::string msg;
+    std::string msg_err;
+
     void* handle = dl_open(path.c_str());
     if (!handle) {
-        LOG_ERR(error("loader", _("cannot open module: ") + path, dl_error()));
+        msg_err = error(__func__,
+            _("Loader cannot open of '") + subdir + _("' module '") + fname + "'",
+            dl_error());
+        LOG_ERR(msg_err);
         return false;
     }
 
     auto entry = reinterpret_cast<OdeniseModuleEntryFn>(
         dl_sym(handle, ODENISE_MODULE_ENTRY_SYMBOL));
     if (!entry) {
-        LOG_ERR(error("loader", path, std::string(_("missing entry symbol ")) + ODENISE_MODULE_ENTRY_SYMBOL));
+        msg_err = error(__func__,
+            _("Loader cannot resolve entry symbol of '") + subdir + _("' module '") + fname + "'",
+            std::string(_("missing entry symbol ")) + ODENISE_MODULE_ENTRY_SYMBOL);
+        LOG_ERR(msg_err);
         dl_close(handle);
         return false;
     }
 
     const OdeniseModuleVTable* vt = entry();
     if (!vt) {
-        LOG_ERR(error("loader", path, _("null vtable returned")));
+        msg_err = error(__func__,
+            _("Loader cannot read vtable of '") + subdir + _("' module '") + fname + "'",
+            _("null vtable returned"));
+        LOG_ERR(msg_err);
         dl_close(handle);
         return false;
     }
 
     if (vt->abi_version != kAbiVersion) {
-        LOG_ERR(error("loader", path,
-            std::string(_("incompatible ABI ")) + std::to_string(vt->abi_version)
-            + _(" (expected ") + std::to_string(kAbiVersion) + ")"));
+        std::string why = std::string(_("incompatible ABI ")) + std::to_string(vt->abi_version)
+            + _(" (expected ") + std::to_string(kAbiVersion) + ")";
+        msg_err = error(__func__,
+            _("Loader cannot accept ABI of '") + subdir + _("' module '") + fname + "'",
+            why);
+        LOG_ERR(msg_err);
         dl_close(handle);
         return false;
     }
 
     if (!vt->create || !vt->destroy || !vt->process) {
-        LOG_ERR(error("loader", path, _("incomplete vtable (create/destroy/process)")));
+        msg_err = error(__func__,
+            _("Loader cannot use vtable of '") + subdir + _("' module '") + fname + "'",
+            _("incomplete vtable (create/destroy/process)"));
+        LOG_ERR(msg_err);
         dl_close(handle);
         return false;
     }
 
     ModuleKind kind;
     if (!kindFromInt(vt->info.kind, kind)) {
-        LOG_ERR(error("loader", path, _("unknown module kind ") + std::to_string(vt->info.kind)));
+        msg_err = error(__func__,
+            _("Loader cannot identify kind of '") + subdir + _("' module '") + fname + "'",
+            _("unknown module kind ") + std::to_string(vt->info.kind));
+        LOG_ERR(msg_err);
         dl_close(handle);
         return false;
     }
@@ -122,7 +148,14 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
     lm.vtable = vt;
     lm.info   = toModuleInfo(vt->info, kind);
     lm.path   = path;
-    LOG(_("loader: loaded module '") + lm.info.name + "' (" + path + ")");
+    msg = _("loader: loaded [");
+    msg += kindName(kind);
+    msg += _("] module '");
+    msg += lm.info.name;
+    msg += "' (";
+    msg += path;
+    msg += ")";
+    LOG(msg);
     modules_.push_back(std::move(lm));
     return true;
 }
@@ -130,12 +163,17 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
 int ModuleRegistry::scanDirectory(const std::filesystem::path& dir) {
     std::error_code ec;
     if (!std::filesystem::is_directory(dir, ec)) {
-        LOG(_("loader: module directory not found: ") + dir.string());
+        std::string msg = _("loader: module directory not found: ");
+        msg += dir.string();
+        LOG(msg);
         return 0;
     }
 
+    // Scan recursif : les modules sont ranges par sous-dossier de kind
+    // (modules/suppression/, modules/backends/, ...), miroir de l'arbre source.
+    // On descend donc dans toute l'arborescence sous 'dir'.
     int loaded = 0;
-    for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+    for (const auto& e : std::filesystem::recursive_directory_iterator(dir, ec)) {
         if (ec) break;
         if (!e.is_regular_file()) continue;
         if (e.path().extension() != kModuleExt) continue;

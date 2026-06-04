@@ -71,6 +71,19 @@ enum class ModuleKind {                   // familles de modules enfichables
     Inference         // moteur d'inference : TensorRT / ONNX / NNRT (futur ML)
 };
 
+// Libelle lisible d'un ModuleKind (logs, UI). Renvoie un litteral statique :
+// aucune allocation, identique sur tous les compilateurs.
+inline const char* kindName(ModuleKind kind) {
+    switch (kind) {
+        case ModuleKind::ComputeBackend: return "ComputeBackend";
+        case ModuleKind::Suppression:    return "Suppression";
+        case ModuleKind::Window:         return "Window";
+        case ModuleKind::DualMic:        return "DualMic";
+        case ModuleKind::Inference:      return "Inference";
+    }
+    return "Unknown";
+}
+
 enum class ApplyResult {
     Hot,          // re-pointage + crossfade, sans glitch ni changement latence
     HotRelatency, // a chaud, mais latence changee -> re-declarer a l'hote

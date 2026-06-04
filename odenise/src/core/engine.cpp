@@ -58,12 +58,19 @@ public:
         LOG(_("engine: created (n=") + std::to_string(cfg_.n)
             + _(", modules loaded: ") + std::to_string(n) + ")");
 
-        // Instanciation du module de suppression actif.
+        // Liaison des modules par couche, du socle vers le haut :
+        //   1. ComputeBackend (fournit le calcul, aucune dependance)
+        //   2. Suppression    (consomme le calcul du backend)
+        // L'ordre garantit que le socle est pret avant les couches au-dessus.
+        bindBackend(caps_.backend_id);
         bindSuppression(cfg_.suppression_id);
     }
 
     ~EngineImpl() override {
+        // Liberation en ordre inverse du bind : on detruit les couches hautes
+        // avant le socle, pour qu'aucune couche n'utilise un backend deja detruit.
         releaseSuppression();
+        releaseBackend();
     }
 
     int latencySamples() const noexcept override { return cfg_.n; }
@@ -149,11 +156,49 @@ private:
         LOG(_("engine: bound suppression module id=") + std::to_string(id));
     }
 
+    void releaseBackend() {
+        if (backend_vt_ && backend_inst_) {
+            backend_vt_->destroy(backend_inst_);
+            backend_inst_ = nullptr;
+        }
+        backend_vt_ = nullptr;
+    }
+
+    void bindBackend(int id) {
+        releaseBackend();
+
+        // AUTO (-1) : premier ComputeBackend charge. Sinon : id precis.
+        if (id < 0) {
+            const auto backends = registry_.list(ModuleKind::ComputeBackend);
+            if (backends.empty()) {
+                LOG(_("engine: no compute backend available"));
+                return;
+            }
+            id = backends.front().id;
+        }
+
+        backend_vt_ = registry_.find(ModuleKind::ComputeBackend, id);
+        if (!backend_vt_) {
+            LOG(_("engine: no compute backend with id ") + std::to_string(id));
+            return;
+        }
+        backend_inst_ = backend_vt_->create(caps_.sample_rate, caps_.n_max);
+        if (!backend_inst_) {
+            LOG_ERR(error("engine", _("compute backend create failed"),
+                          _("id=") + std::to_string(id)));
+            backend_vt_ = nullptr;
+            return;
+        }
+        LOG(_("engine: bound compute backend id=") + std::to_string(id));
+    }
+
     EngineCaps                 caps_;
     RuntimeConfig              cfg_;
     detail::ModuleRegistry     registry_;
     const OdeniseModuleVTable* suppression_vt_   = nullptr;
     OdeniseModuleInstance      suppression_inst_  = nullptr;
+    const OdeniseModuleVTable* backend_vt_       = nullptr;
+    OdeniseModuleInstance      backend_inst_      = nullptr;
 };
 
 std::unique_ptr<Engine> createEngine(const EngineCaps& caps,
