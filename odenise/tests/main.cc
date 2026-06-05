@@ -220,6 +220,59 @@ int run_backend_test() {
     return 0;
 }
 
+int run_latency_test() {
+    std::string msg;
+    std::string msg_err;
+
+    msg = _("=== test: latency info ===");
+    LOG(msg);
+
+    ns::EngineCaps    caps;
+    ns::RuntimeConfig cfg;
+    ns::Status        st;
+
+    auto engine = ns::createEngine(caps, cfg, &st);
+    if (!engine) {
+        msg_err = error(__func__, _("createEngine (latency)"), _("returned nullptr"));
+        LOG_ERR(msg_err);
+        return 1;
+    }
+
+    // Latence declaree : 0 (chaine vide, aucun module C++ installe).
+    const ns::LatencyInfo li = engine->latencyInfo();
+    msg = _("  -> declared latency: ");
+    msg += std::to_string(li.declared_samples);
+    msg += _(" samples (");
+    msg += std::to_string(li.declared_ms);
+    msg += _(" ms)");
+    LOG(msg);
+
+    // Stats de traitement : vides si aucun backend C++ actif.
+    const ns::ProcessingStats ps = engine->processingStats();
+    msg = _("  -> processing stats: min=");
+    msg += std::to_string(ps.min_ms);
+    msg += _(" max=");
+    msg += std::to_string(ps.max_ms);
+    msg += _(" mean=");
+    msg += std::to_string(ps.mean_ms);
+    msg += _(" ms, load=");
+    msg += std::to_string(ps.load_pct);
+    msg += _("%");
+    LOG(msg);
+
+    // backendCaps : valide meme sans backend C++ (retourne struct vide).
+    const ns::BackendCaps bc = engine->backendCaps();
+    msg = _("  -> backend caps: name='");
+    msg += bc.name.empty() ? _("(none)") : bc.name;
+    msg += _("' gpu=");
+    msg += bc.is_gpu ? _("yes") : _("no");
+    LOG(msg);
+
+    msg = _("=== latency info test passed ===");
+    LOG(msg);
+    return 0;
+}
+
 } // namespace
 
 int main(int /*argc*/, char* /*argv*/[]) {
@@ -237,6 +290,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
         if (r != 0) return r;
 
         r = run_backend_test();
+        if (r != 0) return r;
+
+        r = run_latency_test();
         return r;
     } catch (const std::exception& e) {
         std::string msg_err = error(__func__, _("unhandled exception"), e.what());

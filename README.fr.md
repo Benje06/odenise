@@ -21,7 +21,7 @@ Il est **accéléré sur GPU** via **CUDA**, dès les cartes **NVIDIA GTX série
 
 Son principe s'inspire de **RTX Voice**, mais odenise est conçu pour s'exécuter sur les **cœurs CUDA généralistes** (et non les Tensor Cores), ce qui le rend utilisable sur du matériel **Pascal** que NVIDIA Broadcast / Maxine excluent.
 
-> ⚠️ **Projet en cours de développement.** À ce stade, seule l'**ossature** (chargement, journalisation, chaîne de compilation sur les trois cibles) est fonctionnelle. Le traitement audio n'est pas encore implémenté. Voir [État du projet](#état-du-projet).
+> ⚠️ **Projet en cours de développement.** À ce stade, l'**ossature** (chargement dynamique des modules, journalisation, chaîne de compilation sur les trois cibles) est fonctionnelle, le **routage audio** traverse un module de suppression, et les **backends de calcul** sont chargés comme modules. Le **traitement DSP réel** (chaîne STFT) n'est pas encore implémenté. Voir [État du projet](#état-du-projet).
 
 # Déscription
 odenise applique une **suppression de bruit dans le domaine spectral**, sur l'**amplitude** uniquement — l'inversion de phase est impossible avec un seul micro, faute de référence de bruit instantanée.
@@ -118,20 +118,45 @@ $ cmake --build --preset windows-msvc-cuda
 ```
 
 #### Exécuter le test de chaîne de chargement
-Les binaires sont regroupés dans `build/<preset>/bin/` (et `bin/Release/` avec le générateur Visual Studio). L'exécutable de test y trouve la bibliothèque à côté de lui.
+Les binaires sont regroupés dans `build/<preset>/bin/` (et `bin/Release/` avec le générateur Visual Studio). L'exécutable de test y trouve la bibliothèque à côté de lui, et localise les modules dans `share/odenise/<version>/modules/` (rangés par sous-dossier de *kind* : `suppression/`, `backends/`).
 ```sh
 $ ./build/<preset>/bin/test_core
 ```
-Sortie attendue (console et `odenise_test.log`) :
+Sortie attendue (console et `odenise_test.log`, chemins abrégés). L'erreur sur `backend_cuda.dll` est **normale** tant que le module CUDA est un *stub* sans point d'entrée : le scan l'ignore et poursuit.
 ```
 === test: load chain ===
-loader: module directory not found: modules
-engine: created (n=1024, modules loaded: 0)
+loader: loaded [ComputeBackend] module 'cpu' (.../modules/backends/backend_cpu.dll)
+*** ERROR *** From: tryLoad
+        Loader cannot resolve entry symbol of 'backends' module 'backend_cuda.dll'
+        Reason => missing entry symbol odenise_module_entry
+loader: loaded [Suppression] module 'passthrough' (.../modules/suppression/passthrough.dll)
+engine: created (n=1024, modules loaded: 2)
+engine: bound compute backend id=0
+engine: no suppression module with id 0
 engine created, latency = 1024 samples
-dynamic backends found: 0
-suppression modules: 0
+dynamic backends found: 1
+suppression modules: 1
+  -> self-test [Suppression] 'passthrough'...
+     PASS: passthrough OK : 4 echantillons in == out
 === load chain test passed ===
+=== test: process passthrough ===
+engine: created (n=1024, modules loaded: 2)
+engine: bound compute backend id=0
+engine: no suppression module with id 0
+  -> no module bound: process() returns Unsupported (OK)
+engine: bound suppression module id=1
+=== process passthrough test passed (128 frames) ===
+=== test: compute backend ===
+engine: created (n=1024, modules loaded: 2)
+engine: bound compute backend id=0
+engine: no suppression module with id 0
+compute backends: 1
+  -> self-test [ComputeBackend] 'cpu'...
+     PASS: backend CPU OK : instanciation/destruction
+=== compute backend test passed ===
 ```
+
+> Note : chaque test recrée un moteur, donc le scan des modules (et l'erreur `backend_cuda` *stub*) se répète à chaque section. Les lignes de scan répétées ont été omises ci-dessus pour les sections `process` et `compute backend`.
 
 # DEBUG
 - La **journalisation** se règle à trois niveaux via le LogManager :\
@@ -148,9 +173,19 @@ suppression modules: 0
 - chaîne de compilation **CMake** + presets ; build CUDA via le générateur Visual Studio ;
 - i18n (gettext) en place côté code, en mode pass-through.
 
-À ce stade, le traitement audio (`process`) renvoie volontairement « non supporté » : il n'y a pas encore de DSP.
+**Phase 2 — en cours.** Plomberie de traitement et modularisation des backends :
+1. ✅ **Routage audio** : `process()` traverse le module de suppression actif (validé par le module neutre `passthrough`, sortie = entrée).
+2. ✅ **Backends de calcul comme modules** : la famille `ComputeBackend` est chargée dynamiquement au même titre que la suppression. Le repli **CPU** (`backend_cpu`, id 0) est le *fallback*. Le cœur n'a **plus aucune dépendance CUDA** : tout le code GPU vit dans le module `backend_cuda` (compilé séparément en MSVC). Liaison **par couche** (backend avant suppression), libération en ordre inverse.
+3. ⏳ **Chaîne STFT réelle** (fenêtrage → FFT → gain par bande → iFFT → overlap-add) — prochaine étape.
 
-**Suite** : premier module dynamique « passthrough », puis routage audio, interface des backends de calcul, chaîne STFT réelle, profils de bruit, module CUDA isolé, et enveloppes plugin / autonome.
+Conventions de la phase 2 désormais en place :
+- modules **rangés par *kind*** dans l'arbre de sortie et d'installation (`modules/suppression/`, `modules/backends/`), miroir de l'arbre source ; le loader scanne **récursivement** ;
+- sélection d'un module via son `id`, **propre à chaque *kind*** (l'id 0 d'un *kind* est indépendant de l'id 0 d'un autre) ; `suppression_id = 0` signifie « aucun module de suppression lié » ;
+- diagnostics du loader au format `from / what / why`, identifiant le module fautif par son sous-dossier (*kind* présumé) et son nom de fichier.
+
+À ce stade, le `process()` route l'audio à travers le module choisi, mais le **DSP spectral** (chaîne STFT, gain par bande) reste à implémenter : un module de suppression réel n'existe pas encore au-delà du `passthrough`.
+
+**Suite** : chaîne STFT réelle, profils de bruit 3 couches + adaptation, module CUDA isolé (code GPU réel), boucle auto-correctrice, puis enveloppes plugin (JUCE) et autonome (gtkmm), et extension double-micro.
 
 # Historique
 odenise est né du besoin d'un suppresseur de bruit pour le **streaming en direct**, dans la lignée du travail mené autour de **RTX Voice** sur cartes **GTX 1080** : RTX Voice a démontré que le débruitage GPU fonctionne sur Pascal via les cœurs CUDA généralistes, alors que NVIDIA Broadcast / Maxine exigent des Tensor Cores et excluent donc ce matériel.

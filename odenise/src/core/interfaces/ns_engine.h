@@ -12,9 +12,9 @@
 // ============================================================================
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -270,7 +270,7 @@ struct ProcessingStats {
 //  Le module l'utilise pour acceder au scratch buffer pre-alloue et au
 //  contexte de calcul natif (cudaStream_t, pool id, etc.).
 // ---------------------------------------------------------------------------
-class ODENISE_API BackendContext {
+class BackendContext {
 public:
     virtual ~BackendContext() = default;
 
@@ -295,7 +295,7 @@ public:
 //  Chaque famille (Suppression, Window, DualMic, Inference) herite de cette
 //  base. La chaine de traitement manipule des ModuleBase* uniformement.
 // ---------------------------------------------------------------------------
-class ODENISE_API ModuleBase {
+class ModuleBase {
 public:
     virtual ~ModuleBase() = default;
 
@@ -338,7 +338,7 @@ public:
 //  Il possede les contextes de calcul (CPU pool ou CUDA stream), les buffers
 //  de transfert pre-alloues, et la liste plate des elements de la chaine.
 // ---------------------------------------------------------------------------
-class ODENISE_API BackendBase {
+class BackendBase {
 public:
     virtual ~BackendBase() = default;
 
@@ -365,13 +365,26 @@ public:
     virtual BackendCaps caps() const noexcept = 0;
 
     // [CTRL] Declenche la mesure de latence reelle sur N blocs de bruit blanc.
-    // Resultat fourni de maniere asynchrone via on_latency_result.
-    // N = nombre de blocs pour les stats de traitement (min/max/mean).
+    // Hors RT uniquement. Ecrit last_latency_ et last_stats_ a la fin,
+    // puis leve measure_ready_ (release). Jamais appele par process().
     virtual void measure(int num_blocks = 16) = 0;
 
-    // Callback appele par le backend (hors RT) quand la mesure est disponible.
-    virtual void on_measure_result(const LatencyInfo&, const ProcessingStats&) noexcept {}
-    // l'engine surcharge cette méthode dans son adaptateur interne
+    // [CTRL] Lecture des resultats de la derniere mesure. Hors RT.
+    // L'UI ou l'engine appellent measure_ready() depuis un timer ;
+    // si true, ils lisent last_latency_info() et last_processing_stats().
+    // Zéro blocage, zéro attente : si false, on reviendra au prochain tick.
+    bool measure_ready() const noexcept {
+        return measure_ready_.load(std::memory_order_acquire);
+    }
+    const LatencyInfo&     last_latency_info()     const noexcept { return last_latency_; }
+    const ProcessingStats& last_processing_stats()  const noexcept { return last_stats_; }
+
+protected:
+    // Ecrit par measure() hors RT, lu par l'engine/UI hors RT via les
+    // accesseurs publics. Jamais touche par process() -- zéro impact RT.
+    LatencyInfo             last_latency_;
+    ProcessingStats         last_stats_;
+    std::atomic<bool>       measure_ready_{false};
 };
 
 // ===========================================================================

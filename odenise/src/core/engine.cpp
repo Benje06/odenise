@@ -65,27 +65,7 @@ public:
         LOG(_("engine: created (n=") + std::to_string(cfg_.n)
             + _(", modules loaded: ") + std::to_string(n) + ")");
 
-        // Enregistre le callback de latence de la chaine.
-        chain_.on_latency_changed = [this](int samples) {
-            latency_info_.declared_samples = samples;
-            latency_info_.declared_ms =
-                (caps_.sample_rate > 0)
-                ? (static_cast<float>(samples) / static_cast<float>(caps_.sample_rate)) * 1000.0f
-                : 0.0f;
-            latency_info_.in_sync =
-                (latency_info_.declared_samples == latency_info_.measured_samples);
-            std::string msg = _("engine: declared latency updated: ");
-            msg += std::to_string(samples);
-            msg += _(" samples (");
-            msg += std::to_string(latency_info_.declared_ms);
-            msg += _(" ms)");
-            LOG(msg);
-        };
-
         // Liaison des modules par couche, du socle vers le haut.
-        // Chemin phase 3+ : si le module expose create_backend/create_module,
-        // on utilise BackendBase* / ModuleBase* et AudioChain.
-        // Chemin legacy (phase 1/2) : vtable C directe.
         bindBackend(caps_.backend_id);
         bindSuppression(cfg_.suppression_id);
     }
@@ -178,11 +158,27 @@ public:
     // --- mesures de performance -----------------------------------------
 
     LatencyInfo latencyInfo() const override {
-        return latency_info_;
+        LatencyInfo li;
+        // Latence declaree : sommee par AudioChain au cablage.
+        li.declared_samples = chain_.declared_latency_samples();
+        li.declared_ms = (caps_.sample_rate > 0)
+            ? (static_cast<float>(li.declared_samples)
+               / static_cast<float>(caps_.sample_rate)) * 1000.0f
+            : 0.0f;
+        // Latence mesuree : lue depuis le backend si disponible.
+        if (backend_base_ && backend_base_->measure_ready()) {
+            const auto& bli      = backend_base_->last_latency_info();
+            li.measured_samples  = bli.measured_samples;
+            li.measured_ms       = bli.measured_ms;
+        }
+        li.in_sync = (li.declared_samples == li.measured_samples);
+        return li;
     }
 
     ProcessingStats processingStats() const override {
-        return processing_stats_;
+        if (backend_base_ && backend_base_->measure_ready())
+            return backend_base_->last_processing_stats();
+        return {};
     }
 
     Metrics  metrics()  const override { return {}; }
@@ -194,8 +190,9 @@ private:
     //  Tente d'abord le chemin C++ (create_backend), repli sur vtable C.
     // -----------------------------------------------------------------------
     void releaseBackend() {
-        // Chemin C++ : le backend_base_ est possede par le module (detruit via
-        // la vtable C destroy(), qui detruit l'objet C++ retourne).
+        // Chemin C++ : backend_base_ est possede par le module via la vtable C.
+        // Sa destruction se fait via destroy() de la vtable, qui detruit l'objet
+        // C++ retourne par create_backend().
         backend_base_ = nullptr;
 
         // Chemin legacy
@@ -229,12 +226,6 @@ private:
         if (backend_vt_->create_backend) {
             backend_base_ = backend_vt_->create_backend(caps_.sample_rate, caps_.n_max);
             if (backend_base_) {
-                // Enregistre le callback de mesure.
-                backend_base_->on_measure_result =
-                    [this](const LatencyInfo& li, const ProcessingStats& ps) {
-                        latency_info_    = li;
-                        processing_stats_ = ps;
-                    };
                 LOG(_("engine: bound C++ backend id=") + std::to_string(id));
                 return;
             }
@@ -329,7 +320,7 @@ private:
     chain::AudioChain       chain_;
 
     // Chemin C++ (phase 3+)
-    BackendBase*            backend_base_       = nullptr;
+    BackendBase*            backend_base_       = nullptr; // possede par le module
     ModuleBase*             suppression_module_ = nullptr;
 
     // Chemin legacy (phase 1/2 -- compatibilite)
@@ -337,10 +328,6 @@ private:
     OdeniseModuleInstance      suppression_inst_  = nullptr;
     const OdeniseModuleVTable* backend_vt_       = nullptr;
     OdeniseModuleInstance      backend_inst_      = nullptr;
-
-    // Mesures de performance (mises a jour par les callbacks)
-    LatencyInfo             latency_info_;
-    ProcessingStats         processing_stats_;
 };
 
 std::unique_ptr<Engine> createEngine(const EngineCaps& caps,
