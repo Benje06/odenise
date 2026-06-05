@@ -2,11 +2,21 @@
 #  src/core/CMakeLists.txt -- libodenise : le coeur DSP.
 #  Bibliotheque PARTAGEE reutilisable. ZERO dependance JUCE/gtkmm/GLib.
 #  ZERO dependance CUDA : tout le calcul GPU est dans des modules dynamiques.
+#
+#  Layout des sources :
+#    interfaces/ns_engine.h        -> API publique (ModuleBase, BackendBase, ...)
+#    chain/audio_chain.h/.cpp      -> chaine cablee (interne, non installe)
+#    registry/module_registry.h    -> registre des modules (interne)
+#    registry/loader.cpp           -> chargement dlopen/LoadLibrary
+#    tools/logger.h/.cc            -> LogManager (interne + export LOGGER)
+#    tools/common.h / debug.h      -> utilitaires communs
+#    engine.cpp                    -> EngineImpl, createEngine()
 # ============================================================================
 
 set(ODENISE_CORE_SOURCES
     engine.cpp
-    loader.cpp
+    chain/audio_chain.cpp
+    registry/loader.cpp
     tools/logger.cc
 )
 
@@ -18,10 +28,22 @@ set_target_properties(odenise_core PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
+# ---------------------------------------------------------------------------
+#  Includes
+#  PUBLIC  : interfaces/ expose ns_engine.h aux consommateurs (modules, tests,
+#            plugin). Le chemin BUILD_INTERFACE permet d'inclure sans install ;
+#            INSTALL_INTERFACE est le chemin apres cmake --install.
+#  PRIVATE : chain/, registry/, tools/ sont internes au coeur uniquement.
+# ---------------------------------------------------------------------------
 target_include_directories(odenise_core
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-        $<INSTALL_INTERFACE:include>)
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/interfaces>
+        $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/chain
+        ${CMAKE_CURRENT_SOURCE_DIR}/registry
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
 target_compile_features(odenise_core PUBLIC cxx_std_20)
 target_compile_definitions(odenise_core PRIVATE
@@ -42,14 +64,19 @@ else()
         $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>)
 endif()
 
-# --- Installation (convention gxinterface/dx7interface) ---------------------
-# Linux : /usr/lib/libodenise-<version>.so
-#         /usr/include/odenise/<version>/ns_engine.h
-# Windows : usr/bin/odenise.dll
+# ---------------------------------------------------------------------------
+#  Installation (convention gxinterface/dx7interface)
+#  Linux  : /usr/lib/libodenise-<version>.so
+#           /usr/include/odenise/<version>/ns_engine.h
+#  Windows: usr/bin/odenise.dll
+# ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 install(TARGETS odenise_core
         LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES ns_engine.h
+
+# ns_engine.h est le seul header public installe.
+# Les headers internes (chain/, registry/, tools/) ne sont pas installes.
+install(FILES interfaces/ns_engine.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${ODENISE_VERSION_DIR})

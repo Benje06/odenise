@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -42,6 +43,19 @@
 namespace ns {
 
 inline constexpr int kAbiVersion = 1;
+
+// ---------------------------------------------------------------------------
+//  Identifiants de type de backend (extensibles par les modules tiers).
+//  Un module declare son backend_type_id dans OdeniseModuleInfoC.
+//  kBackendAny = compatible avec tout backend (le module s'adapte).
+//  Un backend tiers choisit un id libre (ex. 100, 200...) sans modifier ce
+//  fichier : le coeur fait correspondre module et backend par cet entier.
+// ---------------------------------------------------------------------------
+inline constexpr int kBackendAny  = 0;
+inline constexpr int kBackendCPU  = 1;
+inline constexpr int kBackendCUDA = 2;
+inline constexpr int kBackendROCm = 3;
+// reservez des plages > 99 pour les backends tiers
 
 // ---------------------------------------------------------------------------
 //  Enums
@@ -145,23 +159,25 @@ struct RuntimeConfig {
 // ---------------------------------------------------------------------------
 struct BackendCaps {
     std::string name;                 // ex. "NVIDIA GeForce GTX 1080"
-    bool        is_gpu     = false;
-    std::size_t vram_bytes = 0;
-    int         cc_major   = 0;       // compute capability (6,1 = Pascal)
-    int         cc_minor   = 0;
-    bool        has_fp16   = false;
-    bool        has_tensor = false;   // false sur Pascal -> chemin FP32
+    bool        is_gpu       = false;
+    std::size_t vram_bytes   = 0;
+    int         cc_major     = 0;    // compute capability (6,1 = Pascal)
+    int         cc_minor     = 0;
+    bool        has_fp16     = false;
+    bool        has_tensor   = false; // false sur Pascal -> chemin FP32
+    int         backend_type = kBackendAny; // identifiant du type de backend
 };
 
 // ---------------------------------------------------------------------------
 //  Description d'un module (peuplement des listes UI)
 // ---------------------------------------------------------------------------
 struct ModuleInfo {
-    int         id        = 0;
-    ModuleKind  kind      = ModuleKind::Suppression;
+    int         id               = 0;
+    ModuleKind  kind             = ModuleKind::Suppression;
     std::string name;
     std::string description;
-    bool        needs_gpu = false;
+    bool        needs_gpu        = false;
+    int         backend_type_id  = kBackendAny; // backend requis (kBackendAny = tous)
 };
 
 struct TestResult {                   // self-test embarque par chaque module
@@ -195,6 +211,169 @@ struct Spectrum {                     // magnitude par bin (n/2+1 en R2C)
     std::vector<float> out_mag;
 };
 
+// ---------------------------------------------------------------------------
+//  Mesures de performance de la chaine de traitement.
+//
+//  latency_declared_samples : somme des latences declarees par les modules
+//                             au cablage (promesse theorique).
+//  latency_measured_samples : latence reelle mesuree sur le pipeline par
+//                             injection de N blocs de bruit blanc.
+//  processing_min/max/mean_ms : temps de traitement reel par bloc sur N blocs
+//                               de bruit blanc (pire cas spectral).
+//  budget_ms  : budget temps reel = hop / sample_rate * 1000.
+//  load_pct   : mean_ms / budget_ms * 100 (charge du thread audio).
+// ---------------------------------------------------------------------------
+struct LatencyInfo {
+    int   declared_samples = 0;
+    int   measured_samples = 0;
+    float declared_ms      = 0.0f;
+    float measured_ms      = 0.0f;
+    bool  in_sync          = false;  // declared == measured a +/-1 sample
+};
+
+struct ProcessingStats {
+    float min_ms    = 0.0f;
+    float max_ms    = 0.0f;
+    float mean_ms   = 0.0f;
+    float budget_ms = 0.0f;  // hop / sample_rate * 1000
+    float load_pct  = 0.0f;  // mean / budget * 100
+};
+
+// ===========================================================================
+//  INTERFACES ABSTRAITES -- contrats que tout module et backend implementent.
+//
+//  BackendContext : contexte de ressource fourni par le backend a un module.
+//                  Permet au module d'acceder a la ressource de calcul
+//                  (stream CUDA, pool de threads CPU, scratch buffer) sans
+//                  connaitre le backend concret.
+//
+//  ModuleBase     : interface que tout module de traitement implemente.
+//                  Un module recoit un BackendContext a l'installation, alloue
+//                  ses ressources internes via le scratch buffer, et expose
+//                  son buffer de sortie au module suivant dans la chaine.
+//
+//  BackendBase    : interface que tout backend de calcul implemente.
+//                  Le backend possede la ressource de calcul, installe les
+//                  modules, cable la chaine, et execute process() en RT.
+//
+//  Cycle de vie :
+//    [CTRL] engine charge backend et modules via le registre
+//    [CTRL] engine appelle BackendBase::install_module() pour chaque module
+//    [CTRL] BackendBase cable la chaine (pointeurs, transferts) -- une fois
+//    [RT]   engine appelle BackendBase::process() a chaque bloc
+//    [CTRL] engine appelle BackendBase::uninstall_module() au recablage
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+//  BackendContext -- contexte de ressource (CPU thread pool ou CUDA stream).
+//  Fourni par le backend a chaque module lors de l'installation.
+//  Le module l'utilise pour acceder au scratch buffer pre-alloue et au
+//  contexte de calcul natif (cudaStream_t, pool id, etc.).
+// ---------------------------------------------------------------------------
+class ODENISE_API BackendContext {
+public:
+    virtual ~BackendContext() = default;
+
+    // [CTRL] Memoire de travail pre-allouee par le backend a N_max.
+    // Le module y taille ses buffers internes a l'installation (hors RT).
+    // Zéro allocation en RT.
+    virtual void*  scratch_buf(std::size_t bytes) noexcept = 0;
+
+    // [RT/CTRL] Contexte natif de la ressource de calcul.
+    // CPU : nullptr ou pointeur vers un pool de threads.
+    // CUDA : pointeur vers un cudaStream_t actif.
+    // Le module caste selon son type de backend declare.
+    virtual void*  compute_stream() noexcept = 0;
+
+    // [CTRL] Type de backend de ce contexte (kBackendCPU, kBackendCUDA, ...).
+    // Permet au module de valider la compatibilite a l'installation.
+    virtual int    backend_type() const noexcept = 0;
+};
+
+// ---------------------------------------------------------------------------
+//  ModuleBase -- interface commune a tous les modules de traitement.
+//  Chaque famille (Suppression, Window, DualMic, Inference) herite de cette
+//  base. La chaine de traitement manipule des ModuleBase* uniformement.
+// ---------------------------------------------------------------------------
+class ODENISE_API ModuleBase {
+public:
+    virtual ~ModuleBase() = default;
+
+    // [CTRL] Latence algorithmique declaree par ce module, en samples.
+    // Sommee au cablage pour la PDC. Doit etre constante apres creation.
+    virtual int latency_samples() const noexcept = 0;
+
+    // [CTRL] Installation sur un contexte backend.
+    // Le module alloue ses buffers internes via ctx->scratch_buf(),
+    // valide la compatibilite via ctx->backend_type().
+    // Retourne false si incompatible ou echec d'allocation.
+    virtual bool install(BackendContext* ctx) = 0;
+
+    // [CTRL] Liberation des ressources associees au contexte.
+    virtual void uninstall(BackendContext* ctx) noexcept = 0;
+
+    // [RT] Parametre a chaud. Zéro allocation, zéro verrou.
+    virtual void set_param(ParamId id, float value) noexcept = 0;
+
+    // [RT] Buffer de sortie du module (RAM ou device ptr selon le contexte).
+    // Le backend cable ce pointeur comme entree du module suivant au cablage.
+    // Valide apres install(), invalide apres uninstall().
+    virtual void* output_buf() noexcept = 0;
+
+    // [CTRL] Cablage : le backend indique au module quelle est son entree.
+    // Appele une fois au cablage, avant le premier process().
+    // src est le output_buf() du module precedent, ou le buffer d'entree
+    // du backend pour le premier module de la chaine.
+    virtual void set_input(const void* src) noexcept = 0;
+
+    // [RT] Traitement d'un bloc. Le module lit depuis son entree cablee,
+    // ecrit dans son output_buf(). Zéro allocation, zéro verrou.
+    virtual void process(int num_frames) noexcept = 0;
+};
+
+// ---------------------------------------------------------------------------
+//  BackendBase -- interface que tout backend de calcul implemente.
+//  Le backend est charge par le registre exactement comme un module, via
+//  odenise_module_entry(). Il implemente BackendBase en plus de la vtable C.
+//  Il possede les contextes de calcul (CPU pool ou CUDA stream), les buffers
+//  de transfert pre-alloues, et la liste plate des elements de la chaine.
+// ---------------------------------------------------------------------------
+class ODENISE_API BackendBase {
+public:
+    virtual ~BackendBase() = default;
+
+    // [CTRL] Installe un module dans la chaine a la position donnee.
+    // Le backend choisit le contexte adequat (CPU ou GPU) selon le
+    // backend_type_id declare par le module, cable les pointeurs,
+    // insere les noeuds de transfert H2D/D2H si necessaire.
+    // position = 0 : premier de la chaine.
+    virtual bool install_module(ModuleBase* mod,
+                                ModuleKind  kind,
+                                int         position) = 0;
+
+    // [CTRL] Retire un module de la chaine et recable les voisins.
+    virtual void uninstall_module(ModuleKind kind, int position) noexcept = 0;
+
+    // [RT] Traitement d'un bloc audio. Le backend itere sur la liste plate
+    // cablee : modules et noeuds de transfert, dans l'ordre, via pointeurs
+    // de fonctions pre-resolus. Zéro decision, zéro allocation.
+    virtual Status process(const float* const* in,
+                           float*              out,
+                           int                 num_frames) noexcept = 0;
+
+    // [CTRL] Capabilities de la ressource de calcul.
+    virtual BackendCaps caps() const noexcept = 0;
+
+    // [CTRL] Declenche la mesure de latence reelle sur N blocs de bruit blanc.
+    // Resultat fourni de maniere asynchrone via on_latency_result.
+    // N = nombre de blocs pour les stats de traitement (min/max/mean).
+    virtual void measure(int num_blocks = 16) = 0;
+
+    // Callback appele par le backend (hors RT) quand la mesure est disponible.
+    virtual void on_measure_result(const LatencyInfo&, const ProcessingStats&) noexcept {}
+    // l'engine surcharge cette méthode dans son adaptateur interne
+};
+
 // ===========================================================================
 //  Interface du moteur. Instanciee par createEngine() ; detruite par RAII.
 //  Le backend concret (CPU/CUDA/...) est interne, selectionne via
@@ -218,7 +397,7 @@ public:
 
     // --- traitement temps reel ------------------------------------------
     // [RT]  traite les pistes fournies. Chaque piste route sur son stream.
-    //        Non bloquant : aucun malloc, aucune synchro device imposee.
+    //       Non bloquant : aucun malloc, aucune synchro device imposee.
     virtual Status process(std::span<const TrackIO> tracks,
                            int num_frames) noexcept = 0;
 
@@ -247,6 +426,12 @@ public:
     virtual std::vector<ModuleInfo> modules(ModuleKind kind) const = 0;
     // [CTRL] execute le self-test embarque d'un module.
     virtual TestResult selfTest(ModuleKind kind, int module_id) const = 0;
+
+    // --- mesures de performance -----------------------------------------
+    // [CTRL] latence declaree + mesuree de la chaine courante.
+    virtual LatencyInfo    latencyInfo()    const = 0;
+    // [CTRL] stats de traitement (min/max/mean/budget/load).
+    virtual ProcessingStats processingStats() const = 0;
 
     // --- remontee de metriques / spectres -------------------------------
     // [CTRL] copies coherentes des snapshots publies par le thread audio.
@@ -287,26 +472,38 @@ ODENISE_API std::vector<ModuleInfo> availableBackends();
 //   - Memoire : tout objet cree par le module est detruit par le module.
 //   - Types : seuls des POD / const char* traversent. Les chaines sont
 //     possedees par le module et valides tant qu'il est charge.
+//
+//  Extension C++ au-dela de la frontiere C :
+//   La vtable C expose un pointeur create_cpp() qui retourne un ModuleBase*
+//   (ou BackendBase* pour les backends). Une fois ce pointeur obtenu, le
+//   coeur appelle les methodes virtuelles C++ directement, sans passer par
+//   la vtable C. C'est la meme convention que gxinterface.
+//   Contrainte : module et coeur doivent partager le meme compilateur et la
+//   meme STL (garantie dans odenise : GCC/UCRT64 pour CPU, MSVC pour CUDA).
 // ===========================================================================
 extern "C" {
 
 typedef struct {
     int          id;
-    int          kind;          // valeur de ns::ModuleKind
+    int          kind;            // valeur de ns::ModuleKind
     const char*  name;
     const char*  description;
-    int          needs_gpu;     // 0/1
+    int          needs_gpu;       // 0/1
+    int          backend_type_id; // ns::kBackendAny, kBackendCPU, kBackendCUDA, ...
+                                  // ou valeur libre pour un backend tiers (>99)
 } OdeniseModuleInfoC;
 
 typedef struct {
-    int          passed;        // 0/1
+    int          passed;          // 0/1
     const char*  detail;
 } OdeniseTestResultC;
 
 // Buffers detenus par l'appelant (le coeur), valides le temps de l'appel.
+// Conserve pour la compatibilite avec les modules de la phase 1/2 et les
+// modules qui n'implementent pas encore ModuleBase.
 typedef struct {
-    const float* const* in;     // in[ch]
-    float*              out;     // sortie mono
+    const float* const* in;       // in[ch]
+    float*              out;      // sortie mono
     int                 in_channels;
     int                 num_frames;
 } OdeniseProcessCtx;
@@ -315,16 +512,29 @@ typedef void* OdeniseModuleInstance;
 
 // Table de fonctions d'un module. Tout pointeur est noexcept cote module ;
 // les fonctions de traitement renvoient un int = valeur de ns::Status.
+//
+// Extension C++ : create_cpp retourne un ModuleBase* (ou BackendBase* pour
+// les backends de type ComputeBackend). Si non nul, le coeur l'utilise
+// directement pour la chaine de traitement. Si nul (anciens modules), le
+// coeur utilise le chemin process() de la phase 1/2.
 typedef struct {
     int                  abi_version;   // DOIT valoir ns::kAbiVersion
 
     OdeniseModuleInfoC   info;          // metadonnees (sans instance)
 
+    // --- chemin phase 1/2 (compatibilite) ---
     OdeniseModuleInstance (*create)(int sample_rate, int n_max);
     void                  (*destroy)(OdeniseModuleInstance self);
     int  (*set_param)(OdeniseModuleInstance self, int param_id, float value);
     int  (*process)(OdeniseModuleInstance self, OdeniseProcessCtx* ctx);
     OdeniseTestResultC (*self_test)(void);
+
+    // --- extension C++ (phase 3+) ---
+    // Retourne un ModuleBase* (modules) ou BackendBase* (ComputeBackend).
+    // Nul si le module n'implemente pas encore cette interface.
+    // L'objet retourne est gere par le module (meme duree de vie que create()).
+    ns::ModuleBase*   (*create_module) (int sample_rate, int n_max);
+    ns::BackendBase*  (*create_backend)(int sample_rate, int n_max);
 
 } OdeniseModuleVTable;
 

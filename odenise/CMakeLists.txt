@@ -35,7 +35,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #  Layout sous <prefix> :
 #    bin/                              -> odenise(.exe), test_core(.exe)
 #    lib/                              -> libodenise.so (.dll va dans bin/ sous Windows)
-#    include/odenise/<version>/        -> ns_engine.h
+#    include/odenise/<version>/        -> ns_engine.h (depuis src/core/interfaces/)
 #    share/odenise/<version>/modules/  -> passthrough.so/.dll, ...
 #    share/odenise/<version>/data/     -> cfg/, ui/ (futur)
 #    share/locale/                     -> .mo gettext (futur)
