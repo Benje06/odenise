@@ -2,9 +2,15 @@
 //  module_registry.h  --  Registre interne des modules dynamiques (PRIVE).
 //
 //  Header INTERNE au coeur : non installe, non expose dans l'API publique.
-//  Possede les poignees de bibliotheque chargees et les tables de fonctions.
-//  Le moteur (engine.cpp) interroge ce registre pour instancier et router les
-//  modules, et pour peupler Engine::modules() / Engine::selfTest().
+//
+//  Deux etats pour un module :
+//    Disponible : metadonnees connues (scan), handle ferme, pas d'objet.
+//    Charge     : handle ouvert, objet instancie, pret a l'emploi.
+//
+//  Ownership : le registry cree et detruit les objets des modules charges
+//  (principe : celui qui cree detruit). L'engine et le backend obtiennent
+//  des pointeurs via find_module()/find_backend() sans jamais en prendre
+//  la propriete (pas de delete).
 // ============================================================================
 #pragma once
 
@@ -16,63 +22,103 @@
 
 namespace ns::detail {
 
-// Un module charge : poignee de lib (gardee ouverte), fonction d'entree
-// pour instancier les objets avec les bonnes caps, et metadonnees converties
-// en types C++ (copiees, donc independantes du cycle de vie des const char*).
-// Les objets C++ (base, backend) sont crees par l'engine via make() avec les
-// vraies caps (sample_rate, n_max) -- pas par le loader qui ne les connait pas.
-struct LoadedModule {
-    void*                  handle    = nullptr;  // LibHandle opaque (HMODULE/void*)
-    OdeniseModuleEntryFn   entry_fn  = nullptr;  // fabrique : entry(sr, n_max)
-    ModuleInfo             info;                 // converti depuis OdeniseModuleInfoC
-    std::string            path;                 // chemin du .so/.dll
-
-    // Instancie un objet avec les caps reelles. Retourne nullptr si echec.
-    // Pour ComputeBackend, l'objet implemente aussi BackendBase.
-    ns::ModuleBase* make(int sample_rate, int n_max) const {
-        return entry_fn ? entry_fn(sample_rate, n_max) : nullptr;
-    }
+// ---------------------------------------------------------------------------
+//  AvailableModule -- metadonnees d'un module decouvert au scan.
+//  Handle ferme, pas d'objet instancie.
+//  Sert a peupler l'UI (list_available) et a guider load_module().
+// ---------------------------------------------------------------------------
+struct AvailableModule {
+    ModuleInfo  info;   // id, kind, name, description, needs_gpu, backend_type_id
+    std::string path;   // chemin absolu du .so/.dll
 };
 
 // ---------------------------------------------------------------------------
-//  Registre : scanne un dossier, charge les modules valides, les enumere.
-//  Les bibliotheques restent ouvertes tant que le registre vit. C'est au
-//  moteur de garantir qu'aucune instance ne survit a la destruction du
-//  registre (regle d'ownership de la frontiere dynamique).
+//  LoadedModule -- module charge : handle ouvert + objet instancie.
+//  Possede par le registry (cree et detruit par lui).
+//  Pour ComputeBackend, module et backend pointent sur le meme objet C++
+//  vu sous deux interfaces distinctes.
+// ---------------------------------------------------------------------------
+struct LoadedModule {
+    void*          handle  = nullptr;  // LibHandle opaque (HMODULE/void*)
+    ModuleBase*    module  = nullptr;  // objet instancie, possede par le registry
+    BackendBase*   backend = nullptr;  // non nul si kind == ComputeBackend
+    ModuleInfo     info;               // copie des metadonnees
+    std::string    path;               // chemin du .so/.dll
+};
+
+// ---------------------------------------------------------------------------
+//  ModuleRegistry -- scan, chargement, acces aux modules.
+//
+//  Cycle de vie :
+//    1. scan_modules(dir)        -- decouvre les modules disponibles
+//    2. load_module(kind, id)    -- charge un module selectionne
+//    3. find_module/find_backend -- acces aux objets charges (non-owning)
+//    4. unload_module(kind, id)  -- decharge un module
+//    5. ~ModuleRegistry()        -- decharge tout
 // ---------------------------------------------------------------------------
 class ModuleRegistry {
 public:
     ModuleRegistry() = default;
-    ~ModuleRegistry();                              // ferme toutes les libs
+    ~ModuleRegistry();
     ModuleRegistry(const ModuleRegistry&)            = delete;
     ModuleRegistry& operator=(const ModuleRegistry&) = delete;
 
-    // Charge tous les modules valides d'un dossier. Renvoie le nombre charge.
-    // Les fichiers invalides (mauvaise ABI, symbole absent...) sont ignores
-    // avec un diagnostic, sans interrompre le scan.
-    int scanDirectory(const std::filesystem::path& dir);
+    // -----------------------------------------------------------------------
+    //  Decouverte -- peuple available_, ne charge rien.
+    //  Renvoie le nombre de modules decouverts.
+    // -----------------------------------------------------------------------
+    int scan_modules(const std::filesystem::path& dir);
 
-    // Enumere les modules d'une famille (pour l'UI).
-    std::vector<ModuleInfo> list(ModuleKind kind) const;
+    // -----------------------------------------------------------------------
+    //  Chargement / dechargement
+    // -----------------------------------------------------------------------
 
-    // Retourne le ModuleBase* d'un module (kind + id), instancie avec les
-    // caps fournies. L'appelant prend possession de l'objet (delete requis).
-    // Retourne nullptr si absent ou echec d'instanciation.
-    ns::ModuleBase*  make(ModuleKind kind, int id,
-                          int sample_rate, int n_max) const;
+    // Charge un module disponible (kind + id) : ouvre la lib, instancie
+    // l'objet avec (0,0), verifie le cast BackendBase si necessaire.
+    // Retourne true si charge avec succes (ou deja charge).
+    bool load_module(ModuleKind kind, int id);
 
-    // Retourne le BackendBase* d'un backend (ComputeBackend + id), instancie
-    // avec les caps fournies. L'appelant prend possession de l'objet.
-    // Retourne nullptr si absent ou si ce n'est pas un ComputeBackend.
-    ns::BackendBase* make_backend(int id,
-                                  int sample_rate, int n_max) const;
+    // Decharge un module : detruit l'objet et ferme le handle.
+    // Sans effet si le module n'est pas charge.
+    void unload_module(ModuleKind kind, int id) noexcept;
 
-    // Execute le self-test embarque d'un module.
-    TestResult selfTest(ModuleKind kind, int id) const;
+    // -----------------------------------------------------------------------
+    //  Acces aux modules charges (pointeurs non-owning).
+    //  Retournent nullptr si le module n'est pas charge.
+    // -----------------------------------------------------------------------
+    ModuleBase*  find_module(ModuleKind kind, int id) const;
+    BackendBase* find_backend(int id) const;
+
+    // -----------------------------------------------------------------------
+    //  Listes
+    // -----------------------------------------------------------------------
+
+    // Modules decouverts (pour l'UI : propose ce qui est disponible).
+    std::vector<ModuleInfo> list_available(ModuleKind kind) const;
+
+    // Modules actuellement charges (pour l'engine : ce qui est actif).
+    std::vector<ModuleInfo> list_loaded(ModuleKind kind) const;
+
+    // -----------------------------------------------------------------------
+    //  Self-test d'un module disponible.
+    //  Charge temporairement si pas deja charge, execute le test, decharge.
+    // -----------------------------------------------------------------------
+    TestResult self_test(ModuleKind kind, int id);
 
 private:
-    bool tryLoad(const std::filesystem::path& file);   // charge un fichier
-    std::vector<LoadedModule> modules_;
+    // Probe d'un fichier : lit les metadonnees via un objet temporaire (0,0).
+    // Retourne false si le fichier n'est pas un module odenise valide.
+    bool probe_file(const std::filesystem::path& file);
+
+    // Trouve un AvailableModule par kind+id. Retourne nullptr si absent.
+    const AvailableModule* find_available(ModuleKind kind, int id) const;
+
+    // Trouve un LoadedModule par kind+id. Retourne nullptr si absent.
+    LoadedModule* find_loaded(ModuleKind kind, int id);
+    const LoadedModule* find_loaded(ModuleKind kind, int id) const;
+
+    std::vector<AvailableModule> available_;  // modules decouverts, non charges
+    std::vector<LoadedModule>    loaded_;     // modules charges, possedes par le registry
 };
 
 } // namespace ns::detail

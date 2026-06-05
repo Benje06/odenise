@@ -1,26 +1,22 @@
 // engine.cpp -- orchestration du moteur.
 //
 // Phase 3 : suppression du double chemin legacy/C++.
-// L'engine utilise uniquement ModuleBase* et BackendBase* obtenus via le
-// registre. La frontiere C (vtable legacy) a disparu : les modules exposent
-// directement leurs interfaces C++, avec structs POD pour la frontiere
-// inter-compilateurs (info_c(), caps_c(), self_test_c()).
-// La AudioChain est interne au backend : l'engine ne la manipule pas
-// directement, il passe par install_module() / uninstall_module().
+// L'engine utilise ModuleBase* et BackendBase* obtenus via le registry.
+// Seuls les modules selectionnes (backend actif + modules de la chaine audio)
+// sont charges. Les autres sont connus (available) mais pas en memoire.
+// La AudioChain est interne au backend : l'engine passe par
+// install_module() / uninstall_module().
 #include "ns_engine.h"
 #include "registry/module_registry.h"
 #include "tools/logger.h"
 
-#include <cstdlib>      // std::getenv / std::free / _dupenv_s
-#include <filesystem>   // std::filesystem::path (dependance directe : IWYU)
+#include <cstdlib>
+#include <filesystem>
 
 namespace ns {
 
 namespace {
-// Dossier de modules : env var > convention dx7interface.
-// Sous Windows, on localise l'exe via GetModuleFileName ; sous Linux via
-// /proc/self/exe. Le chemin relatif au dossier courant ne marche pas
-// quand l'IDE lance l'exe depuis la racine du projet.
+
 std::filesystem::path exeDir() {
 #if defined(_WIN32)
     char buf[MAX_PATH] = {};
@@ -30,12 +26,11 @@ std::filesystem::path exeDir() {
     std::error_code ec;
     auto p = std::filesystem::read_symlink("/proc/self/exe", ec);
     if (!ec) return p.parent_path();
-    return std::filesystem::current_path();   // repli
+    return std::filesystem::current_path();
 #endif
 }
 
 std::filesystem::path moduleDir() {
-    // 1. Variable d'environnement (prioritaire, pour les tests manuels)
 #if defined(_WIN32)
     char*  buf = nullptr;
     size_t len = 0;
@@ -48,14 +43,9 @@ std::filesystem::path moduleDir() {
     if (const char* e = std::getenv("ODENISE_MODULE_PATH"))
         return e;
 #endif
-
-    // 2. Convention dx7interface (build et deploy) :
-    //    exe dans <prefix>/bin/ -> modules dans <prefix>/share/odenise/<version>/modules/
     return exeDir() / ".." / "share" / ODENISE_VERSION_DIR / "modules";
 }
 
-// Construit BackendCaps (type coeur, avec std::string) depuis la struct POD
-// retournee par caps_c(). Jamais appele depuis un module MSVC.
 BackendCaps toBackendCaps(const OdeniseBackendCapsC& c) {
     BackendCaps bc;
     bc.name         = c.name ? c.name : "";
@@ -68,6 +58,7 @@ BackendCaps toBackendCaps(const OdeniseBackendCapsC& c) {
     bc.backend_type = c.backend_type;
     return bc;
 }
+
 } // namespace
 
 class EngineImpl final : public Engine {
@@ -75,27 +66,27 @@ public:
     EngineImpl(const EngineCaps& caps, const RuntimeConfig& cfg)
         : caps_(caps), cfg_(cfg) {
 
+        // Decouverte des modules disponibles (sans chargement).
         const auto dir = moduleDir();
-        const int n = registry_.scanDirectory(dir);
+        const int n = registry_.scan_modules(dir);
         std::string msg = _("engine: created (n=");
         msg += std::to_string(cfg_.n);
-        msg += _(", modules loaded: ");
+        msg += _(", modules available: ");
         msg += std::to_string(n);
         msg += ")";
         LOG(msg);
 
-        // Liaison des modules par couche, du socle vers le haut.
+        // Chargement et liaison par couche : backend d'abord, modules ensuite.
         bindBackend(caps_.backend_id);
         bindSuppression(cfg_.suppression_id);
     }
 
     ~EngineImpl() override {
-        // Liberation en ordre inverse du bind.
+        // Liberation en ordre inverse. Les objets sont possedes par le registry.
         releaseSuppression();
         releaseBackend();
     }
 
-    // [RT] Latence declaree courante.
     int latencySamples() const noexcept override {
         if (backend_) {
             const int declared = backend_->last_latency_info().declared_samples;
@@ -108,6 +99,9 @@ public:
         const bool sup_changed = (cfg.suppression_id != cfg_.suppression_id);
         cfg_ = cfg;
         how  = ApplyResult::Hot;
+
+        if (backend_)
+            backend_->reconfigure(caps_, cfg_);
 
         if (sup_changed)
             bindSuppression(cfg_.suppression_id);
@@ -123,14 +117,11 @@ public:
 
     Status process(std::span<const TrackIO> tracks,
                    int num_frames) noexcept override {
-
         for (const auto& t : tracks) {
             if (!t.in || !t.out || t.in_channels < 1)
                 return Status::InvalidArg;
-
             if (!backend_)
                 return Status::Unsupported;
-
             const Status rc = backend_->process(t.in, t.out, num_frames);
             if (rc != Status::Ok) return rc;
         }
@@ -152,26 +143,25 @@ public:
         return Status::Unsupported;
     }
 
+    // list_available : ce que l'UI peut proposer.
+    // list_loaded    : ce qui est actif (sous-ensemble de available).
     std::vector<ModuleInfo> modules(ModuleKind kind) const override {
-        return registry_.list(kind);
-    }
-    TestResult selfTest(ModuleKind kind, int id) const override {
-        return registry_.selfTest(kind, id);
+        return registry_.list_available(kind);
     }
 
-    // --- mesures de performance -----------------------------------------
+    TestResult selfTest(ModuleKind kind, int id) const override {
+        // self_test() est non-const car peut charger/decharger temporairement.
+        return const_cast<EngineImpl*>(this)->registry_.self_test(kind, id);
+    }
 
     LatencyInfo latencyInfo() const override {
         LatencyInfo li;
         if (backend_) {
-            // declared_samples : mis a jour par le backend a chaque install_module().
-            // Lisible sans attendre measure().
             li.declared_samples = backend_->last_latency_info().declared_samples;
             li.declared_ms = (caps_.sample_rate > 0)
                 ? (static_cast<float>(li.declared_samples)
                    / static_cast<float>(caps_.sample_rate)) * 1000.0f
                 : 0.0f;
-            // measured_samples : disponible uniquement apres measure().
             if (backend_->measure_ready()) {
                 li.measured_samples = backend_->last_latency_info().measured_samples;
                 li.measured_ms      = backend_->last_latency_info().measured_ms;
@@ -195,31 +185,46 @@ private:
     //  Gestion du backend
     // -----------------------------------------------------------------------
     void releaseBackend() {
-        // L'engine possede les objets crees via make()/make_backend().
-        delete backend_;
-        backend_ = nullptr;
+        // Le registry possede l'objet -- on decharge via lui.
+        if (backend_) {
+            registry_.unload_module(ModuleKind::ComputeBackend, backend_id_);
+            backend_     = nullptr;
+            backend_id_  = -1;
+        }
     }
 
     void bindBackend(int id) {
         releaseBackend();
 
-        // AUTO (-1) : premier ComputeBackend charge.
+        // AUTO (-1) : premier ComputeBackend disponible.
         if (id < 0) {
-            const auto backends = registry_.list(ModuleKind::ComputeBackend);
-            if (backends.empty()) {
+            const auto available = registry_.list_available(ModuleKind::ComputeBackend);
+            if (available.empty()) {
                 LOG(_("engine: no compute backend available"));
                 return;
             }
-            id = backends.front().id;
+            id = available.front().id;
         }
 
-        backend_ = registry_.make_backend(id, caps_.sample_rate, caps_.n_max);
-        if (!backend_) {
-            std::string msg = _("engine: no compute backend with id ");
+        if (!registry_.load_module(ModuleKind::ComputeBackend, id)) {
+            std::string msg = _("engine: cannot load backend id=");
             msg += std::to_string(id);
             LOG(msg);
             return;
         }
+
+        backend_ = registry_.find_backend(id);
+        if (!backend_) {
+            std::string msg = _("engine: find_backend returned null for id=");
+            msg += std::to_string(id);
+            LOG(msg);
+            return;
+        }
+        backend_id_ = id;
+
+        // Reconfigure avec les caps et cfg reelles.
+        backend_->reconfigure(caps_, cfg_);
+
         std::string msg = _("engine: bound backend id=");
         msg += std::to_string(id);
         msg += _(" name='");
@@ -235,8 +240,9 @@ private:
         if (suppression_) {
             if (backend_)
                 backend_->uninstall_module(ModuleKind::Suppression, 0);
-            delete suppression_;
-            suppression_ = nullptr;
+            registry_.unload_module(ModuleKind::Suppression, suppression_id_);
+            suppression_    = nullptr;
+            suppression_id_ = 0;
         }
     }
 
@@ -248,24 +254,34 @@ private:
             return;
         }
 
-        suppression_ = registry_.make(ModuleKind::Suppression, id,
-                                      caps_.sample_rate, caps_.n_max);
-        if (!suppression_) {
-            std::string msg = _("engine: no suppression module with id ");
+        if (!registry_.load_module(ModuleKind::Suppression, id)) {
+            std::string msg = _("engine: cannot load suppression module id=");
             msg += std::to_string(id);
             LOG(msg);
             return;
         }
+
+        suppression_ = registry_.find_module(ModuleKind::Suppression, id);
+        if (!suppression_) {
+            std::string msg = _("engine: find_module returned null for suppression id=");
+            msg += std::to_string(id);
+            LOG(msg);
+            registry_.unload_module(ModuleKind::Suppression, id);
+            return;
+        }
+        suppression_id_ = id;
 
         if (!backend_ || !backend_->install_module(suppression_, ModuleKind::Suppression, 0)) {
             std::string msg_err = error("engine",
                 _("suppression module chain install failed"),
                 _("id=") + std::to_string(id));
             LOG_ERR(msg_err);
-            delete suppression_;
-            suppression_ = nullptr;
+            registry_.unload_module(ModuleKind::Suppression, id);
+            suppression_    = nullptr;
+            suppression_id_ = 0;
             return;
         }
+
         std::string msg = _("engine: bound suppression module id=");
         msg += std::to_string(id);
         LOG(msg);
@@ -278,8 +294,10 @@ private:
     RuntimeConfig           cfg_;
     detail::ModuleRegistry  registry_;
 
-    BackendBase*  backend_     = nullptr;  // pointe vers l'objet du registre
-    ModuleBase*   suppression_ = nullptr;  // pointe vers l'objet du registre
+    BackendBase*  backend_        = nullptr;  // pointeur non-owning (registry)
+    int           backend_id_     = -1;       // id du backend charge
+    ModuleBase*   suppression_    = nullptr;  // pointeur non-owning (registry)
+    int           suppression_id_ = 0;        // id du module de suppression charge
 };
 
 std::unique_ptr<Engine> createEngine(const EngineCaps& caps,
@@ -291,8 +309,8 @@ std::unique_ptr<Engine> createEngine(const EngineCaps& caps,
 
 std::vector<ModuleInfo> availableBackends() {
     detail::ModuleRegistry reg;
-    reg.scanDirectory(moduleDir());
-    return reg.list(ModuleKind::ComputeBackend);
+    reg.scan_modules(moduleDir());
+    return reg.list_available(ModuleKind::ComputeBackend);
 }
 
 } // namespace ns

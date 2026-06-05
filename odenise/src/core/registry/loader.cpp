@@ -1,18 +1,20 @@
 // ============================================================================
 //  loader.cpp  --  Chargement dynamique portable des modules + registre.
 //
-//  Implemente ns::detail::ModuleRegistry. Couche fine au-dessus de
-//  dlopen/LoadLibrary : ouvre les .so/.dll d'un dossier, resout le symbole
-//  d'entree, verifie l'ABI via un objet temporaire, stocke entry_fn.
+//  Implemente ns::detail::ModuleRegistry.
 //
-//  Separation des responsabilites :
-//   - Le loader lit les metadonnees (info_c()) via un objet temporaire
-//     instancie avec (0, 0), puis le detruit immediatement.
-//   - L'engine cree les objets definitifs via make(sample_rate, n_max)
-//     au moment du bind, avec les vraies caps moteur.
-//   - Le registre ne possede que les handles de bibliotheque.
+//  Deux phases distinctes :
+//    1. scan_modules() : decouverte via probe temporaire (open/probe/close).
+//       Lit info_c() sur un objet (0,0) immediatement detruit, stocke les
+//       metadonnees dans available_. Aucun objet definitif cree.
+//    2. load_module() : chargement a la demande. Rouvre la lib, instancie
+//       l'objet definitif avec (0,0), stocke dans loaded_. L'engine appelle
+//       ensuite backend->reconfigure() pour adapter aux caps reelles.
 //
-//  Diagnostics via le LogManager (LOG / LOG_ERR), au format error(from,what,why).
+//  Ownership : le registry cree et detruit les objets (principe RAII).
+//  L'engine obtient des pointeurs non-owning via find_module/find_backend.
+//
+//  Diagnostics via le LogManager (LOG / LOG_ERR), format error(from,what,why).
 // ============================================================================
 #include "module_registry.h"
 #include "tools/logger.h"
@@ -20,7 +22,7 @@
 #include <system_error>
 
 // ---------------------------------------------------------------------------
-//  Shim plateforme : ouverture / resolution de symbole / fermeture.
+//  Shim plateforme
 // ---------------------------------------------------------------------------
 #if defined(_WIN32)
   #include <windows.h>
@@ -75,25 +77,30 @@ ModuleInfo toModuleInfo(const OdeniseModuleInfoC& c, ModuleKind kind) {
 } // namespace
 
 // ---------------------------------------------------------------------------
-//  Destructeur : seul le handle de bibliotheque est possede par le registre.
-//  Les objets C++ (ModuleBase*, BackendBase*) sont possedes par l'engine.
+//  Destructeur : decharge tous les modules charges dans l'ordre inverse.
 // ---------------------------------------------------------------------------
 ModuleRegistry::~ModuleRegistry() {
-    for (auto it = modules_.rbegin(); it != modules_.rend(); ++it)
+    for (auto it = loaded_.rbegin(); it != loaded_.rend(); ++it) {
+        // Pour ComputeBackend, backend et module pointent sur le meme objet.
+        // Un seul delete suffit (via module, qui a le destructeur virtuel).
+        delete it->module;
+        it->module  = nullptr;
+        it->backend = nullptr;
         dl_close(it->handle);
-    modules_.clear();
+        it->handle = nullptr;
+    }
+    loaded_.clear();
 }
 
 // ---------------------------------------------------------------------------
-//  tryLoad -- charge un fichier, lit les metadonnees, stocke entry_fn.
-//  Instancie un objet temporaire avec (0,0) uniquement pour lire info_c(),
-//  puis le detruit. L'objet definitif est cree par make() via l'engine.
+//  probe_file -- phase 1 : lit les metadonnees d'un fichier.
+//  Ouvre la lib, instancie un objet temporaire (0,0), lit info_c(),
+//  detruit l'objet, ferme la lib. Stocke dans available_ si valide.
 // ---------------------------------------------------------------------------
-bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
+bool ModuleRegistry::probe_file(const std::filesystem::path& file) {
     const std::string path   = file.string();
     const std::string fname  = file.filename().string();
     const std::string subdir = file.parent_path().filename().string();
-    std::string msg;
     std::string msg_err;
 
     void* handle = dl_open(path.c_str());
@@ -105,7 +112,6 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
         return false;
     }
 
-    // Resolution du symbole d'entree.
     auto entry = reinterpret_cast<OdeniseModuleEntryFn>(
         dl_sym(handle, ODENISE_MODULE_ENTRY_SYMBOL));
     if (!entry) {
@@ -117,10 +123,8 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
         return false;
     }
 
-    // Instanciation temporaire pour lire info_c() uniquement.
-    // L'objet est detruit immediatement apres la lecture des metadonnees.
-    // Les objets definitifs sont crees par make() avec les vraies caps.
-    ns::ModuleBase* probe = entry(0, 0);
+    // Objet temporaire pour lire info_c() uniquement.
+    ModuleBase* probe = entry(0, 0);
     if (!probe) {
         msg_err = error(__func__,
             _("Loader cannot probe '") + subdir + _("' module '") + fname + "'",
@@ -141,7 +145,6 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
         return false;
     }
 
-    // Verification ABI.
     if (info->abi_version != kAbiVersion) {
         std::string why = std::string(_("incompatible ABI ")) + std::to_string(info->abi_version)
             + _(" (expected ") + std::to_string(kAbiVersion) + ")";
@@ -154,7 +157,6 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
         return false;
     }
 
-    // Validation du kind.
     ModuleKind kind;
     if (!kindFromInt(info->kind, kind)) {
         msg_err = error(__func__,
@@ -166,45 +168,41 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
         return false;
     }
 
-    // Validation du cast BackendBase pour ComputeBackend.
-    if (kind == ModuleKind::ComputeBackend) {
-        if (!dynamic_cast<ns::BackendBase*>(probe)) {
-            msg_err = error(__func__,
-                _("Loader cannot cast backend of '") + subdir + _("' module '") + fname + "'",
-                _("ComputeBackend module does not implement BackendBase"));
-            LOG_ERR(msg_err);
-            delete probe;
-            dl_close(handle);
-            return false;
-        }
+    // Pour ComputeBackend : valide que l'objet implemente bien BackendBase.
+    if (kind == ModuleKind::ComputeBackend && !dynamic_cast<BackendBase*>(probe)) {
+        msg_err = error(__func__,
+            _("Loader cannot cast backend of '") + subdir + _("' module '") + fname + "'",
+            _("ComputeBackend does not implement BackendBase"));
+        LOG_ERR(msg_err);
+        delete probe;
+        dl_close(handle);
+        return false;
     }
 
-    // Metadonnees lues -- destruction de l'objet temporaire.
-    ModuleInfo mi = toModuleInfo(*info, kind);
+    // Metadonnees lues -- destruction du probe et fermeture de la lib.
+    AvailableModule am;
+    am.info = toModuleInfo(*info, kind);
+    am.path = path;
     delete probe;
+    dl_close(handle);
 
-    LoadedModule lm;
-    lm.handle   = handle;
-    lm.entry_fn = entry;
-    lm.info     = std::move(mi);
-    lm.path     = path;
+    available_.push_back(std::move(am));
 
-    msg = _("loader: loaded [");
+    std::string msg = _("loader: available [");
     msg += kindName(kind);
-    msg += _("] module '");
-    msg += lm.info.name;
+    msg += _("] '");
+    msg += available_.back().info.name;
     msg += "' (";
     msg += path;
     msg += ")";
     LOG(msg);
-    modules_.push_back(std::move(lm));
     return true;
 }
 
 // ---------------------------------------------------------------------------
-//  scanDirectory -- scan recursif du dossier de modules.
+//  scan_modules -- scan recursif, peuple available_.
 // ---------------------------------------------------------------------------
-int ModuleRegistry::scanDirectory(const std::filesystem::path& dir) {
+int ModuleRegistry::scan_modules(const std::filesystem::path& dir) {
     std::error_code ec;
     if (!std::filesystem::is_directory(dir, ec)) {
         std::string msg = _("loader: module directory not found: ");
@@ -213,68 +211,195 @@ int ModuleRegistry::scanDirectory(const std::filesystem::path& dir) {
         return 0;
     }
 
-    int loaded = 0;
+    int found = 0;
     for (const auto& e : std::filesystem::recursive_directory_iterator(dir, ec)) {
         if (ec) break;
         if (!e.is_regular_file()) continue;
         if (e.path().extension() != kModuleExt) continue;
-        if (tryLoad(e.path())) ++loaded;
+        if (probe_file(e.path())) ++found;
     }
-    return loaded;
+    return found;
 }
 
 // ---------------------------------------------------------------------------
-//  list -- enumere les modules d'une famille.
+//  find_available -- cherche dans available_ par kind + id.
 // ---------------------------------------------------------------------------
-std::vector<ModuleInfo> ModuleRegistry::list(ModuleKind kind) const {
+const AvailableModule* ModuleRegistry::find_available(ModuleKind kind, int id) const {
+    for (const auto& a : available_)
+        if (a.info.kind == kind && a.info.id == id)
+            return &a;
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+//  find_loaded -- cherche dans loaded_ par kind + id.
+// ---------------------------------------------------------------------------
+LoadedModule* ModuleRegistry::find_loaded(ModuleKind kind, int id) {
+    for (auto& l : loaded_)
+        if (l.info.kind == kind && l.info.id == id)
+            return &l;
+    return nullptr;
+}
+
+const LoadedModule* ModuleRegistry::find_loaded(ModuleKind kind, int id) const {
+    for (const auto& l : loaded_)
+        if (l.info.kind == kind && l.info.id == id)
+            return &l;
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+//  load_module -- phase 2 : charge un module disponible.
+//  Rouvre la lib, instancie l'objet definitif avec (0,0), stocke dans loaded_.
+//  Sans effet (retourne true) si deja charge.
+// ---------------------------------------------------------------------------
+bool ModuleRegistry::load_module(ModuleKind kind, int id) {
+    // Deja charge : rien a faire.
+    if (find_loaded(kind, id))
+        return true;
+
+    const AvailableModule* am = find_available(kind, id);
+    if (!am) {
+        std::string msg_err = error(__func__,
+            _("load_module: module not available"),
+            std::string(_("kind=")) + kindName(kind) + _(" id=") + std::to_string(id));
+        LOG_ERR(msg_err);
+        return false;
+    }
+
+    void* handle = dl_open(am->path.c_str());
+    if (!handle) {
+        std::string msg_err = error(__func__,
+            _("load_module: cannot open '") + am->info.name + "'",
+            dl_error());
+        LOG_ERR(msg_err);
+        return false;
+    }
+
+    auto entry = reinterpret_cast<OdeniseModuleEntryFn>(
+        dl_sym(handle, ODENISE_MODULE_ENTRY_SYMBOL));
+    if (!entry) {
+        std::string msg_err = error(__func__,
+            _("load_module: cannot resolve entry of '") + am->info.name + "'",
+            std::string(_("missing symbol ")) + ODENISE_MODULE_ENTRY_SYMBOL);
+        LOG_ERR(msg_err);
+        dl_close(handle);
+        return false;
+    }
+
+    ModuleBase* module = entry(0, 0);
+    if (!module) {
+        std::string msg_err = error(__func__,
+            _("load_module: entry returned null for '") + am->info.name + "'",
+            _("odenise_module_entry(0,0) returned null"));
+        LOG_ERR(msg_err);
+        dl_close(handle);
+        return false;
+    }
+
+    // Pour ComputeBackend : cast vers BackendBase*.
+    BackendBase* backend = nullptr;
+    if (kind == ModuleKind::ComputeBackend) {
+        backend = dynamic_cast<BackendBase*>(module);
+        if (!backend) {
+            std::string msg_err = error(__func__,
+                _("load_module: cast failed for backend '") + am->info.name + "'",
+                _("ComputeBackend does not implement BackendBase"));
+            LOG_ERR(msg_err);
+            delete module;
+            dl_close(handle);
+            return false;
+        }
+    }
+
+    LoadedModule lm;
+    lm.handle  = handle;
+    lm.module  = module;
+    lm.backend = backend;
+    lm.info    = am->info;
+    lm.path    = am->path;
+    loaded_.push_back(std::move(lm));
+
+    std::string msg = _("loader: loaded [");
+    msg += kindName(kind);
+    msg += _("] '");
+    msg += am->info.name;
+    msg += "'";
+    LOG(msg);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+//  unload_module -- decharge un module : detruit l'objet, ferme le handle.
+// ---------------------------------------------------------------------------
+void ModuleRegistry::unload_module(ModuleKind kind, int id) noexcept {
+    for (auto it = loaded_.begin(); it != loaded_.end(); ++it) {
+        if (it->info.kind == kind && it->info.id == id) {
+            delete it->module;
+            it->module  = nullptr;
+            it->backend = nullptr;
+            dl_close(it->handle);
+            it->handle = nullptr;
+            loaded_.erase(it);
+
+            std::string msg = _("loader: unloaded [");
+            msg += kindName(kind);
+            msg += _("] id=");
+            msg += std::to_string(id);
+            LOG(msg);
+            return;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  find_module / find_backend -- acces non-owning aux modules charges.
+// ---------------------------------------------------------------------------
+ModuleBase* ModuleRegistry::find_module(ModuleKind kind, int id) const {
+    const LoadedModule* lm = find_loaded(kind, id);
+    return lm ? lm->module : nullptr;
+}
+
+BackendBase* ModuleRegistry::find_backend(int id) const {
+    for (const auto& l : loaded_)
+        if (l.info.kind == ModuleKind::ComputeBackend && l.info.id == id)
+            return l.backend;
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+//  list_available / list_loaded
+// ---------------------------------------------------------------------------
+std::vector<ModuleInfo> ModuleRegistry::list_available(ModuleKind kind) const {
     std::vector<ModuleInfo> out;
-    for (const auto& m : modules_)
-        if (m.info.kind == kind)
-            out.push_back(m.info);
+    for (const auto& a : available_)
+        if (a.info.kind == kind)
+            out.push_back(a.info);
+    return out;
+}
+
+std::vector<ModuleInfo> ModuleRegistry::list_loaded(ModuleKind kind) const {
+    std::vector<ModuleInfo> out;
+    for (const auto& l : loaded_)
+        if (l.info.kind == kind)
+            out.push_back(l.info);
     return out;
 }
 
 // ---------------------------------------------------------------------------
-//  make -- instancie un ModuleBase* avec les caps reelles.
-//  L'appelant prend possession de l'objet (delete requis).
+//  self_test -- charge temporairement si necessaire, execute, decharge.
 // ---------------------------------------------------------------------------
-ns::ModuleBase* ModuleRegistry::make(ModuleKind kind, int id,
-                                     int sample_rate, int n_max) const {
-    for (const auto& m : modules_) {
-        if (m.info.kind == kind && m.info.id == id)
-            return m.entry_fn ? m.entry_fn(sample_rate, n_max) : nullptr;
-    }
-    return nullptr;
-}
+TestResult ModuleRegistry::self_test(ModuleKind kind, int id) {
+    const bool was_loaded = (find_loaded(kind, id) != nullptr);
 
-// ---------------------------------------------------------------------------
-//  make_backend -- instancie un BackendBase* avec les caps reelles.
-//  L'appelant prend possession de l'objet (delete requis).
-// ---------------------------------------------------------------------------
-ns::BackendBase* ModuleRegistry::make_backend(int id,
-                                               int sample_rate, int n_max) const {
-    for (const auto& m : modules_) {
-        if (m.info.kind == ModuleKind::ComputeBackend && m.info.id == id) {
-            ns::ModuleBase* base = m.entry_fn ? m.entry_fn(sample_rate, n_max) : nullptr;
-            if (!base) return nullptr;
-            ns::BackendBase* backend = dynamic_cast<ns::BackendBase*>(base);
-            if (!backend) { delete base; return nullptr; }
-            return backend;
-        }
-    }
-    return nullptr;
-}
+    if (!was_loaded && !load_module(kind, id))
+        return TestResult{ false, _("self_test: cannot load module") };
 
-// ---------------------------------------------------------------------------
-//  selfTest -- instancie un objet temporaire et execute son self-test.
-// ---------------------------------------------------------------------------
-TestResult ModuleRegistry::selfTest(ModuleKind kind, int id) const {
-    // Instanciation temporaire avec (0,0) : le self-test ne depend pas des caps.
-    ns::ModuleBase* base = make(kind, id, 0, 0);
-    if (!base)
-        return TestResult{ false, _("module not found or instantiation failed") };
+    ModuleBase* module = find_module(kind, id);
+    if (!module)
+        return TestResult{ false, _("self_test: module not found after load") };
 
-    const OdeniseTestResultC* r = base->self_test_c();
+    const OdeniseTestResultC* r = module->self_test_c();
     TestResult out;
     if (!r) {
         out = TestResult{ false, _("self_test_c() returned null") };
@@ -282,7 +407,11 @@ TestResult ModuleRegistry::selfTest(ModuleKind kind, int id) const {
         out.passed = (r->passed != 0);
         out.detail = r->detail ? r->detail : "";
     }
-    delete base;
+
+    // Decharge si on l'a charge uniquement pour le test.
+    if (!was_loaded)
+        unload_module(kind, id);
+
     return out;
 }
 

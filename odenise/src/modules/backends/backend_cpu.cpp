@@ -1,9 +1,8 @@
 // ============================================================================
 //  backend_cpu.cpp -- Backend de calcul CPU (repli / fallback).
 //
-//  Phase 3 : implémente BackendBase + OdeniseModuleInfoC/OdeniseBackendCapsC
-//  via les methodes info_c() et caps_c() (frontiere ABI-safe inter-compilateurs).
-//  Le chemin legacy (vtable C) est supprime.
+//  Phase 3 : implemente BackendBase + ModuleBase (pour le loader).
+//  Structs POD (info_c, caps_c, self_test_c) pour la frontiere ABI-safe.
 //
 //  Architecture :
 //    CpuBackendContext : BackendContext concret CPU.
@@ -15,6 +14,7 @@
 //      - info_c()  : retourne OdeniseModuleInfoC statique.
 //      - caps_c()  : retourne OdeniseBackendCapsC statique.
 //      - self_test_c() : retourne OdeniseTestResultC (test instanciation).
+//      - reconfigure() : redimensionne le scratch, propage aux modules.
 //      - install_module() : installe le module via AudioChain.
 //      - process() : injecte in[0] dans le premier module, execute AudioChain.
 //      - measure() : N blocs de bruit blanc, chrono std::chrono,
@@ -51,6 +51,13 @@ public:
     // [CTRL] Type de backend : CPU.
     int   backend_type()   const noexcept override { return ns::kBackendCPU; }
 
+    // [CTRL] Redimensionne le scratch buffer (appele par reconfigure).
+    void resize(int n_max) {
+        const auto new_size = static_cast<std::size_t>(n_max) * sizeof(float);
+        if (scratch_.size() != new_size)
+            scratch_.assign(new_size, std::byte{0});
+    }
+
 private:
     std::vector<std::byte> scratch_;
 };
@@ -72,8 +79,6 @@ public:
 
     // -----------------------------------------------------------------------
     //  info_c -- metadonnees POD (frontiere inter-compilateurs).
-    //  Retourne un pointeur vers une struct statique : valide tant que le
-    //  module est charge. Utilise par le loader pour identifier le module.
     // -----------------------------------------------------------------------
     const OdeniseModuleInfoC* info_c() const noexcept override {
         static const OdeniseModuleInfoC s_info = {
@@ -90,7 +95,6 @@ public:
 
     // -----------------------------------------------------------------------
     //  caps_c -- capabilities POD (frontiere inter-compilateurs).
-    //  Le coeur construit BackendCaps (avec std::string) depuis cette struct.
     // -----------------------------------------------------------------------
     const OdeniseBackendCapsC* caps_c() const noexcept override {
         static const OdeniseBackendCapsC s_caps = {
@@ -110,7 +114,6 @@ public:
     //  self_test_c -- self-test POD (frontiere inter-compilateurs).
     // -----------------------------------------------------------------------
     const OdeniseTestResultC* self_test_c() const noexcept override {
-        // Test : instanciation/destruction d'une instance de test.
         static OdeniseTestResultC s_result = { 0, nullptr };
 
         auto* impl = new (std::nothrow) CpuBackendImpl(48000, 1024);
@@ -124,8 +127,27 @@ public:
     }
 
     // -----------------------------------------------------------------------
+    //  reconfigure -- redimensionne les ressources du backend et propage
+    //  aux modules installes. Appele par l'engine au bind et a chaque
+    //  Engine::reconfigure(). Hors RT uniquement.
+    // -----------------------------------------------------------------------
+    void reconfigure(const ns::EngineCaps& caps,
+                     const ns::RuntimeConfig& cfg) override {
+        sample_rate_ = caps.sample_rate;
+        n_max_       = caps.n_max;
+
+        // Redimensionne le scratch buffer si n_max a change.
+        ctx_.resize(n_max_);
+
+        // Propage aux modules installes.
+        // Pour l'instant, les modules sont reinstalles via uninstall/install
+        // pour qu'ils recoivent le nouveau scratch. A terme, un
+        // module->reconfigure(cfg) suffira si le scratch est inchange.
+        (void)cfg;  // sera utilise quand les modules exploiteront n, hop, etc.
+    }
+
+    // -----------------------------------------------------------------------
     //  install_module -- installe un module dans la chaine.
-    //  Delegue a AudioChain::install() qui gere le cablage et le swap atomique.
     // -----------------------------------------------------------------------
     bool install_module(ns::ModuleBase* mod,
                         ns::ModuleKind  kind,
@@ -151,8 +173,6 @@ public:
 
     // -----------------------------------------------------------------------
     //  process -- [RT] traitement d'un bloc audio.
-    //  Injecte in[0] dans le premier module, execute la liste plate cablee.
-    //  Zero decision, zero allocation.
     // -----------------------------------------------------------------------
     ns::Status process(const float* const* in,
                        float*              out,
@@ -183,9 +203,6 @@ public:
 
     // -----------------------------------------------------------------------
     //  measure -- mesure de latence et de charge CPU hors RT.
-    //  Injecte N blocs de bruit blanc, chronometre chaque process(),
-    //  calcule min/max/mean, remplit last_latency_ + last_stats_.
-    //  Appele hors RT uniquement -- jamais depuis process().
     // -----------------------------------------------------------------------
     void measure(int num_blocks) override {
         if (num_blocks <= 0) num_blocks = 16;
@@ -238,13 +255,12 @@ public:
 
     // -----------------------------------------------------------------------
     //  Methodes ModuleBase requises par l'heritage (non utilisees par le backend).
-    //  Le backend n'est pas un module de traitement ; ces methodes ne sont
-    //  jamais appelees par AudioChain sur le backend lui-meme.
     // -----------------------------------------------------------------------
     int    latency_samples() const noexcept override { return 0; }
     bool   install(ns::BackendContext*) override { return true; }
     void   uninstall(ns::BackendContext*) noexcept override {}
     void   set_param(ns::ParamId, float) noexcept override {}
+    void   reconfigure(const ns::RuntimeConfig&) override {}
     void*  output_buf() noexcept override { return nullptr; }
     void   set_input(const void*) noexcept override {}
     void   process(int) noexcept override {}
@@ -261,9 +277,6 @@ private:
 
 // ============================================================================
 //  Point d'entree du module.
-//  Retourne un CpuBackendImpl* vu comme ModuleBase*.
-//  Le loader lit info_c()->kind == ComputeBackend et caste vers BackendBase*
-//  via dynamic_cast.
 // ============================================================================
 extern "C" ODENISE_EXPORT ns::ModuleBase* odenise_module_entry(int sample_rate, int n_max) {
     return new (std::nothrow) CpuBackendImpl(sample_rate, n_max);

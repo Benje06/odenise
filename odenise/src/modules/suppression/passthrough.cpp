@@ -2,7 +2,6 @@
 //  passthrough.cpp -- Module de suppression neutre (sortie = entree).
 //
 //  Phase 3 : implemente ModuleBase (chemin C++).
-//  Suppression du chemin legacy (vtable C).
 //
 //  PassthroughModule :
 //    - info_c()      : metadonnees POD (frontiere ABI-safe).
@@ -92,6 +91,10 @@ public:
 
     void set_param(ns::ParamId /*id*/, float /*value*/) noexcept override {}
 
+    // [CTRL] Reconfiguration structurelle. Le passthrough n'a rien a
+    // reconfigurer : pas de buffers propres, pas de parametres DSP.
+    void reconfigure(const ns::RuntimeConfig& /*cfg*/) override {}
+
     // [RT] Buffer de sortie du module.
     void* output_buf() noexcept override { return output_buf_; }
 
@@ -123,9 +126,6 @@ private:
 
 // ============================================================================
 //  Point d'entree du module.
-//  Retourne un PassthroughModule* vu comme ModuleBase*.
-//  sample_rate et n_max sont ignores par ce module (pas de pre-allocation
-//  propre : le scratch est fourni par BackendContext a l'install).
 // ============================================================================
 extern "C" ODENISE_EXPORT ns::ModuleBase* odenise_module_entry(int /*sample_rate*/,
                                                                 int /*n_max*/) {
