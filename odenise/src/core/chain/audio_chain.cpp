@@ -1,7 +1,7 @@
 // ============================================================================
 //  chain/audio_chain.cpp  --  Implementation de la chaine cablee.
 // ============================================================================
-#include "chain/audio_chain.h"
+#include "audio_chain.h"
 #include "tools/logger.h"
 
 #include <algorithm>

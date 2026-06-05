@@ -23,6 +23,27 @@
 #include <functional>
 #include <vector>
 
+// ---------------------------------------------------------------------------
+//  Visibilite des symboles de libodenise_chain.
+//  ODENISE_CHAIN_API : exporte depuis la lib, importe chez le consommateur.
+//  Meme patron que ODENISE_API / LOGGER dans le reste du projet.
+// ---------------------------------------------------------------------------
+#if defined(_WIN32) || defined(__MINGW32__)
+    #ifdef CHAIN_EXPORTS
+        #define CHAIN __declspec(dllexport)
+    #elif defined(LOGGER_IMPORTS)
+        #define CHAIN __declspec(dllimport)
+    #else
+        #define CHAIN
+    #endif
+#else
+    #ifdef CHAIN_EXPORTS
+        #define CHAIN __attribute__((visibility("default")))
+    #else
+        #define CHAIN
+    #endif
+#endif
+
 namespace ns::chain {
 
 // ---------------------------------------------------------------------------
@@ -75,7 +96,7 @@ struct ChainElement {
 //    chain.replace(backend, mod4, kind4, position4);
 //    chain.remove(kind, position);
 // ---------------------------------------------------------------------------
-class AudioChain {
+class ODENISE_CHAIN_API AudioChain {
 public:
     AudioChain() = default;
     ~AudioChain() = default;
