@@ -124,36 +124,46 @@ $ ./build/<preset>/bin/test_core
 ```
 Sortie attendue (console et `odenise_test.log`, chemins abrégés). L'erreur sur `backend_cuda.dll` est **normale** tant que le module CUDA est un *stub* sans point d'entrée : le scan l'ignore et poursuit.
 ```
-=== test: load chain ===
-loader: loaded [ComputeBackend] module 'cpu' (.../modules/backends/backend_cpu.dll)
+=== test: Build engine ===
+loader: loaded [ComputeBackend] module 'cpu' (D:\crosscompile\msys2\home\jerome\odenise\odenise\build\windows-msvc-cuda\bin\..\share\odenise/0.1.0\modules\backends\backend_cpu.dll)
 *** ERROR *** From: tryLoad
         Loader cannot resolve entry symbol of 'backends' module 'backend_cuda.dll'
         Reason => missing entry symbol odenise_module_entry
-loader: loaded [Suppression] module 'passthrough' (.../modules/suppression/passthrough.dll)
+loader: loaded [Suppression] module 'passthrough' (D:\crosscompile\msys2\home\jerome\odenise\odenise\build\windows-msvc-cuda\bin\..\share\odenise/0.1.0\modules\suppression\passthrough.dll)
 engine: created (n=1024, modules loaded: 2)
-engine: bound compute backend id=0
-engine: no suppression module with id 0
-engine created, latency = 1024 samples
-dynamic backends found: 1
-suppression modules: 1
-  -> self-test [Suppression] 'passthrough'...
-     PASS: passthrough OK : 4 echantillons in == out
+engine: bound backend id=0
+engine: no suppression module requested (id=0)
+engine created, latency = 0 samples
+=== Engine test passed ===
+=== test: load chain ===
+loader: loaded [ComputeBackend] module 'cpu' (D:\crosscompile\msys2\home\jerome\odenise\odenise\build\windows-msvc-cuda\bin\..\share\odenise/0.1.0\modules\backends\backend_cpu.dll)
+*** ERROR *** From: tryLoad
+        Loader cannot resolve entry symbol of 'backends' module 'backend_cuda.dll'
+        Reason => missing entry symbol odenise_module_entry
+loader: loaded [Suppression] module 'passthrough' (D:\crosscompile\msys2\home\jerome\odenise\odenise\build\windows-msvc-cuda\bin\..\share\odenise/0.1.0\modules\suppression\passthrough.dll)
+compute backends modules found: 1
+suppression modules found: 1
 === load chain test passed ===
-=== test: process passthrough ===
-engine: created (n=1024, modules loaded: 2)
-engine: bound compute backend id=0
-engine: no suppression module with id 0
-  -> no module bound: process() returns Unsupported (OK)
-engine: bound suppression module id=1
-=== process passthrough test passed (128 frames) ===
-=== test: compute backend ===
-engine: created (n=1024, modules loaded: 2)
-engine: bound compute backend id=0
-engine: no suppression module with id 0
+=== test: Compute backend module ===
 compute backends: 1
   -> self-test [ComputeBackend] 'cpu'...
      PASS: backend CPU OK : instanciation/destruction
 === compute backend test passed ===
+=== test: Suppression module ===
+Suppression modules: 1
+  -> self-test [Suppression] 'passthrough'...
+     PASS: passthrough OK : 4 echantillons in == out (chemin C++)
+=== Supression Module test passed ===
+=== test: process passthrough ===
+  -> no module bound: process() returns Unsupported (OK)
+audio_chain: rebuilt, 1 elements, declared latency 0 samples
+engine: bound suppression module id=1
+=== process passthrough test passed (128 frames) ===
+=== test: latency info ===
+  -> declared latency: 0 samples (0.000000 ms)
+  -> processing stats: min=0.000000 max=0.000000 mean=0.000000 ms, load=0.000000%
+  -> backend caps: name='cpu' gpu=no
+=== latency info test passed ===
 ```
 
 > Note : chaque test recrée un moteur, donc le scan des modules (et l'erreur `backend_cuda` *stub*) se répète à chaque section. Les lignes de scan répétées ont été omises ci-dessus pour les sections `process` et `compute backend`.
