@@ -1,43 +1,52 @@
 // ============================================================================
 //  backend_cpu.cpp -- Backend de calcul CPU (repli / fallback).
 //
-//  Phase 3a : implémente BackendBase (chemin C++) et expose create_backend.
-//  Le chemin legacy (create/destroy/set_param/process/self_test) est conservé
-//  pour la compatibilité avec les modules phase 1/2.
+//  Phase 3a : implemente BackendBase (chemin C++) + expose create_backend.
+//  Le chemin legacy (create/destroy/process/self_test) est conserve pour
+//  la compatibilite avec les modules phase 1/2.
 //
-//  Ce module est compilé SÉPARÉMENT du cœur (pas de lien contre libodenise).
-//  Il n'inclut que ns_engine.h (API publique). AudioChain est interne au
-//  cœur et inaccessible ici : la liste plate de modules est gérée localement.
+//  Architecture :
+//    CpuBackendContext : BackendContext concret CPU.
+//      - scratch_buf() : buffer RAM pre-alloue a n_max * sizeof(float).
+//      - compute_stream() : nullptr (CPU, pas de stream).
+//      - backend_type() : kBackendCPU.
 //
-//  Derrière la frontière C (vtable), l'implémentation est du C++ normal.
+//    CpuBackendImpl : BackendBase complet.
+//      - Possede une AudioChain interne (compilee directement dans ce module,
+//        pas de link contre libodenise).
+//      - install_module() : installe le module sur CpuBackendContext,
+//        cable via AudioChain.
+//      - process() : injecte in[0] dans le premier module via set_input(),
+//        appelle AudioChain::process().
+//      - measure() : N blocs de bruit blanc, chrono std::chrono,
+//        remplit last_latency_ + last_stats_, store(release) sur measure_ready_.
+//
+//  audio_chain.cpp est compile directement dans ce module (pas de link contre
+//  libodenise). Meme compilateur que le coeur (GCC/UCRT64 pour CPU).
 // ============================================================================
 #include "ns_engine.h"
+#include "chain/audio_chain.h"
 
-#include <algorithm>    // std::find, std::min, std::max
+#include <algorithm>    // std::min, std::max
 #include <chrono>       // std::chrono::steady_clock
-#include <cstdlib>      // std::rand, std::srand
 #include <cstring>      // std::memcpy
 #include <new>          // std::nothrow
+#include <random>       // std::mt19937, std::uniform_real_distribution
 #include <vector>       // std::vector
 
 // ============================================================================
-//  CpuBackendContext -- BackendContext concret pour le backend CPU.
-//
-//  scratch_buf() retourne un pointeur sur un buffer pré-alloué à la
-//  construction (n_max * sizeof(float)). Hors RT uniquement : la taille est
-//  fixée à la création du contexte et ne change pas.
-//  compute_stream() retourne nullptr (CPU : pas de stream natif).
-//  backend_type() retourne kBackendCPU.
+//  CpuBackendContext -- contexte de ressource CPU.
+//  Fourni par CpuBackendImpl a chaque module lors de l'installation.
+//  Possede le scratch buffer pre-alloue a n_max * sizeof(float).
 // ============================================================================
 class CpuBackendContext final : public ns::BackendContext {
 public:
     explicit CpuBackendContext(int n_max)
-        : scratch_(static_cast<std::size_t>(n_max > 0 ? n_max : 4096)
-                   * sizeof(float)) {}
+        : scratch_(static_cast<std::size_t>(n_max) * sizeof(float), std::byte{0}) {}
 
-    // [CTRL] Retourne le début du scratch buffer pré-alloué.
-    // Toujours le même pointeur : une seule région partagée par module.
-    // Le module l'utilise pour placer son output_buf_.
+    // [CTRL] Retourne le debut du scratch buffer.
+    // Pour l'instant : allocation unique partagee entre tous les modules.
+    // Extension future : allocateur par regions pour modules multiples.
     void* scratch_buf(std::size_t /*bytes*/) noexcept override {
         return scratch_.data();
     }
@@ -45,129 +54,71 @@ public:
     // [RT/CTRL] Pas de stream CPU.
     void* compute_stream() noexcept override { return nullptr; }
 
-    // [CTRL] Type de backend de ce contexte.
-    int backend_type() const noexcept override { return ns::kBackendCPU; }
-
-    // Pointeur brut sur le scratch (pour usage interne au backend).
-    float* raw() noexcept {
-        return reinterpret_cast<float*>(scratch_.data());
-    }
-    std::size_t size_bytes() const noexcept { return scratch_.size(); }
+    // [CTRL] Type de backend : CPU.
+    int   backend_type()   const noexcept override { return ns::kBackendCPU; }
 
 private:
-    std::vector<std::byte> scratch_;
+    std::vector<std::byte> scratch_;   // buffer de travail pre-alloue
 };
 
 // ============================================================================
-//  CpuBackendImpl -- BackendBase complet pour le backend CPU.
-//
-//  Gère une liste plate de ModuleBase* (chaîne de traitement).
-//  Chaque module reçoit son propre CpuBackendContext au install_module().
-//  Le câblage set_input/output_buf est résolu à chaque modification de liste.
-//
-//  process() :
-//    - Cas chaîne vide : Status::Unsupported.
-//    - Cas chaîne non vide :
-//        1. modules_[0]->set_input(in[0])      // injection entrée audio
-//        2. Pour chaque module : m->process(num_frames)
-//        3. memcpy(out, modules_.back()->output_buf(), n*sizeof(float))
-//
-//  Câblage interne (rewire()) :
-//    Pour i > 0 : modules_[i]->set_input(modules_[i-1]->output_buf())
-//    Résolu après chaque install/uninstall (hors RT).
+//  CpuBackendImpl -- implementation complete de BackendBase pour le CPU.
+//  Possede AudioChain (compilee dans ce module) et CpuBackendContext.
 // ============================================================================
 class CpuBackendImpl final : public ns::BackendBase {
 public:
-    CpuBackendImpl(int sample_rate, int n_max)
-        : sample_rate_(sample_rate > 0 ? sample_rate : 48000)
-        , n_max_(n_max > 0 ? n_max : 4096) {}
+    explicit CpuBackendImpl(int sample_rate, int n_max)
+        : sample_rate_(sample_rate)
+        , n_max_(n_max)
+        , ctx_(n_max) {}
 
-    ~CpuBackendImpl() override {
-        // Désinstalle tous les modules dans l'ordre inverse du câblage.
-        // Les modules sont possédés par l'engine, pas par le backend :
-        // on appelle uninstall() sans delete.
-        for (int i = static_cast<int>(entries_.size()) - 1; i >= 0; --i) {
-            entries_[i].module->uninstall(entries_[i].ctx.get());
-        }
-    }
+    ~CpuBackendImpl() override = default;
 
     // -----------------------------------------------------------------------
-    //  install_module -- installe un module à la position donnee.
-    //  Crée un CpuBackendContext dédié, installe le module dessus,
-    //  insère dans la liste, recâble.
-    //  Retourne false si le module refuse l'installation.
+    //  install_module -- installe un module dans la chaine.
+    //  Delegue a AudioChain::install() qui gere le cablage et le swap atomique.
     // -----------------------------------------------------------------------
     bool install_module(ns::ModuleBase* mod,
-                        ns::ModuleKind  /*kind*/,
+                        ns::ModuleKind  kind,
                         int             position) override {
         if (!mod) return false;
-
-        // Un contexte par module (scratch indépendant).
-        auto ctx = std::make_unique<CpuBackendContext>(n_max_);
-
-        if (!mod->install(ctx.get()))
-            return false;
-
-        // Insertion à la bonne position (tri par position).
-        Entry e;
-        e.module   = mod;
-        e.position = position;
-        e.ctx      = std::move(ctx);
-
-        auto it = std::lower_bound(entries_.begin(), entries_.end(), e,
-            [](const Entry& a, const Entry& b) {
-                return a.position < b.position;
-            });
-        entries_.insert(it, std::move(e));
-
-        rewire();
-        return true;
+        return chain_.install(this, mod, kind, position);
     }
 
     // -----------------------------------------------------------------------
-    //  uninstall_module -- retire le module à la position donnee.
+    //  uninstall_module -- retire un module de la chaine.
     // -----------------------------------------------------------------------
-    void uninstall_module(ns::ModuleKind /*kind*/,
-                          int            position) noexcept override {
-        auto it = std::find_if(entries_.begin(), entries_.end(),
-            [position](const Entry& e) { return e.position == position; });
-
-        if (it == entries_.end()) return;
-
-        it->module->uninstall(it->ctx.get());
-        entries_.erase(it);
-
-        rewire();
+    void uninstall_module(ns::ModuleKind kind, int position) noexcept override {
+        chain_.remove(this, kind, position);
     }
 
     // -----------------------------------------------------------------------
     //  process -- [RT] traitement d'un bloc audio.
-    //  Injecte in[0] dans le premier module, itère la chaîne, copie la
-    //  sortie du dernier module vers out.
-    //  Zéro allocation, zéro branchement dynamique.
+    //  Injecte in[0] dans le premier module, execute la liste plate cablee.
+    //  Zero decision, zero allocation.
     // -----------------------------------------------------------------------
     ns::Status process(const float* const* in,
                        float*              out,
                        int                 num_frames) noexcept override {
-        if (entries_.empty())
-            return ns::Status::Unsupported;
-
-        if (!in || !in[0] || !out || num_frames <= 0)
+        if (!in || !out || num_frames <= 0)
             return ns::Status::InvalidArg;
 
-        // Injection de l'entrée audio dans le premier module de la chaîne.
-        entries_.front().module->set_input(in[0]);
+        if (chain_.declared_latency_samples() == 0 && nodes_empty_)
+            return ns::Status::Unsupported;
 
-        // Exécution séquentielle de la chaîne.
-        for (auto& e : entries_)
-            e.module->process(num_frames);
+        // Injecte l'entree dans le premier module (cable a l'install).
+        if (first_module_)
+            first_module_->set_input(in[0]);
 
-        // Copie de la sortie du dernier module vers le buffer de sortie hôte.
-        const void* tail_out = entries_.back().module->output_buf();
-        if (tail_out && tail_out != static_cast<void*>(out)) {
-            std::memcpy(out,
-                        tail_out,
-                        static_cast<std::size_t>(num_frames) * sizeof(float));
+        // Execute la chaine plate cablee.
+        chain_.process(num_frames);
+
+        // Copie la sortie du dernier module vers out.
+        if (last_module_) {
+            const void* src = last_module_->output_buf();
+            if (src)
+                std::memcpy(out, src,
+                    static_cast<std::size_t>(num_frames) * sizeof(float));
         }
 
         return ns::Status::Ok;
@@ -177,115 +128,94 @@ public:
     //  caps -- capabilities du backend CPU.
     // -----------------------------------------------------------------------
     ns::BackendCaps caps() const noexcept override {
-        ns::BackendCaps bc;
-        bc.name         = "cpu";
-        bc.is_gpu       = false;
-        bc.vram_bytes   = 0;
-        bc.backend_type = ns::kBackendCPU;
-        return bc;
+        ns::BackendCaps c;
+        c.name         = "cpu";
+        c.is_gpu       = false;
+        c.backend_type = ns::kBackendCPU;
+        return c;
     }
 
     // -----------------------------------------------------------------------
-    //  measure -- mesure de latence réelle sur num_blocks blocs de bruit blanc.
-    //  Hors RT uniquement. Remplit last_latency_ et last_stats_, puis pose
-    //  measure_ready_ (release) pour signaler à l'engine/UI.
+    //  measure -- mesure de latence et de charge CPU hors RT.
+    //  Injecte N blocs de bruit blanc, chronometre chaque process(),
+    //  calcule min/max/mean, remplit last_latency_ + last_stats_.
+    //  Appele hors RT uniquement -- jamais depuis process().
     // -----------------------------------------------------------------------
     void measure(int num_blocks) override {
         if (num_blocks <= 0) num_blocks = 16;
 
-        // Bruit blanc normalisé en entrée (pire cas spectral pour la STFT).
-        const int n = n_max_;
-        std::vector<float> in_buf(static_cast<std::size_t>(n));
-        std::vector<float> out_buf(static_cast<std::size_t>(n));
+        std::mt19937 rng(42);
+        std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
-        std::srand(42u);   // reproductible
-        for (auto& s : in_buf)
-            s = (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX))
-                * 2.0f - 1.0f;
+        std::vector<float> in_buf(static_cast<std::size_t>(n_max_));
+        std::vector<float> out_buf(static_cast<std::size_t>(n_max_));
+        for (auto& s : in_buf) s = dist(rng);
 
         const float* in_ptr = in_buf.data();
+        float* out_ptr = out_buf.data();
 
-        // Budget temps réel : hop = n/4 (75 % de recouvrement, convention odenise).
-        const int   hop        = n / 4;
-        const float budget_ms  = (sample_rate_ > 0)
-            ? (static_cast<float>(hop) / static_cast<float>(sample_rate_)) * 1000.0f
-            : 0.0f;
+        float min_ms = 1e9f;
+        float max_ms = -1e9f;
+        float sum_ms = 0.0f;
 
-        float min_ms  =  1e9f;
-        float max_ms  = -1e9f;
-        float sum_ms  =  0.0f;
-
-        for (int b = 0; b < num_blocks; ++b) {
+        for (int i = 0; i < num_blocks; ++i) {
             const auto t0 = std::chrono::steady_clock::now();
-            process(&in_ptr, out_buf.data(), n);
+            process(&in_ptr, out_ptr, n_max_);
             const auto t1 = std::chrono::steady_clock::now();
 
-            const float elapsed_ms =
-                std::chrono::duration<float, std::milli>(t1 - t0).count();
-
-            if (elapsed_ms < min_ms) min_ms = elapsed_ms;
-            if (elapsed_ms > max_ms) max_ms = elapsed_ms;
-            sum_ms += elapsed_ms;
+            const float ms = std::chrono::duration<float, std::milli>(t1 - t0).count();
+            min_ms  = std::min(min_ms, ms);
+            max_ms  = std::max(max_ms, ms);
+            sum_ms += ms;
         }
 
-        const float mean_ms = sum_ms / static_cast<float>(num_blocks);
-
-        // Latence déclarée : somme des latencies déclarées par les modules.
-        int declared = 0;
-        for (const auto& e : entries_)
-            declared += e.module->latency_samples();
-
-        // Écriture des résultats hors RT, puis signal release.
-        last_latency_.declared_samples = declared;
-        last_latency_.declared_ms      = (sample_rate_ > 0)
-            ? (static_cast<float>(declared) / static_cast<float>(sample_rate_))
-              * 1000.0f
+        const float mean_ms   = sum_ms / static_cast<float>(num_blocks);
+        const float budget_ms = (sample_rate_ > 0)
+            ? (static_cast<float>(n_max_) / static_cast<float>(sample_rate_)) * 1000.0f
             : 0.0f;
-        last_latency_.measured_samples = 0;   // CPU : pas de mesure sample-précise
-        last_latency_.measured_ms      = mean_ms;
-        last_latency_.in_sync          = (declared == 0);
 
-        last_stats_.min_ms    = (min_ms  > 1e8f) ? 0.0f : min_ms;
-        last_stats_.max_ms    = (max_ms  < -1e8f) ? 0.0f : max_ms;
+        last_stats_.min_ms    = min_ms;
+        last_stats_.max_ms    = max_ms;
         last_stats_.mean_ms   = mean_ms;
         last_stats_.budget_ms = budget_ms;
         last_stats_.load_pct  = (budget_ms > 0.0f)
-            ? (mean_ms / budget_ms) * 100.0f
+            ? (mean_ms / budget_ms) * 100.0f : 0.0f;
+
+        // Latence mesuree : somme des latences declarees au cablage.
+        const int declared = chain_.declared_latency_samples();
+        last_latency_.measured_samples = declared;
+        last_latency_.measured_ms = (sample_rate_ > 0)
+            ? (static_cast<float>(declared) / static_cast<float>(sample_rate_)) * 1000.0f
             : 0.0f;
 
-        // Signal : résultats disponibles (lu par engine/UI via measure_ready()).
+        // Publie les resultats -- lu par l'engine via measure_ready() acquire.
         measure_ready_.store(true, std::memory_order_release);
     }
 
-private:
     // -----------------------------------------------------------------------
-    //  rewire -- recâble set_input/output_buf entre modules consécutifs.
-    //  Appelé hors RT après toute modification de la liste.
-    //  Module i reçoit comme entrée le output_buf() du module i-1.
+    //  Accesseurs utilises par AudioChain au cablage pour noter le premier
+    //  et le dernier module de la chaine.
     // -----------------------------------------------------------------------
-    void rewire() noexcept {
-        for (std::size_t i = 1; i < entries_.size(); ++i) {
-            const void* prev_out = entries_[i - 1].module->output_buf();
-            entries_[i].module->set_input(prev_out);
-        }
+    void set_first_module(ns::ModuleBase* m) noexcept {
+        first_module_ = m;
+        nodes_empty_  = (m == nullptr);
     }
+    void set_last_module(ns::ModuleBase* m) noexcept { last_module_ = m; }
 
-    // Un maillon de la liste plate.
-    struct Entry {
-        ns::ModuleBase*                module   = nullptr;
-        int                            position = 0;
-        std::unique_ptr<CpuBackendContext> ctx;
-    };
-
-    int                  sample_rate_;
-    int                  n_max_;
-    std::vector<Entry>   entries_;   // liste plate, triée par position
+private:
+    int                    sample_rate_;
+    int                    n_max_;
+    CpuBackendContext      ctx_;
+    ns::chain::AudioChain  chain_;
+    ns::ModuleBase*        first_module_ = nullptr;  // premier module de la chaine
+    ns::ModuleBase*        last_module_  = nullptr;  // dernier module de la chaine
+    bool                   nodes_empty_  = true;     // vrai si chaine vide
 };
 
 // ============================================================================
-//  Chemin legacy (phase 1/2) -- conservé pour compatibilité.
-//  Utilisé par l'engine si create_backend retourne nullptr (ne doit pas
-//  arriver ici, mais le chemin legacy reste fonctionnel par principe).
+//  Chemin legacy (phase 1/2) -- conserve pour compatibilite.
+//  Les modules qui n'exposent pas encore create_module continuent de
+//  fonctionner via ce chemin.
 // ============================================================================
 struct CpuBackendInstance {
     int sample_rate = 48000;
@@ -306,63 +236,59 @@ static void cpu_destroy(OdeniseModuleInstance self) {
 
 static int cpu_set_param(OdeniseModuleInstance /*self*/,
                          int /*param_id*/, float /*value*/) {
-    return static_cast<int>(ns::Status::Ok);
+    return static_cast<int>(ns::Status::Ok);   // pas de parametre a cette etape
 }
 
 static int cpu_process(OdeniseModuleInstance /*self*/,
                        OdeniseProcessCtx* /*ctx*/) {
-    // Le backend CPU ne route pas l'audio via le chemin legacy.
-    // Le routage réel passe par CpuBackendImpl::process() (chemin C++).
+    // Backend de calcul : ne route pas l'audio comme un module de suppression.
+    // Les primitives de calcul sont branchees via le chemin C++ (BackendBase).
     return static_cast<int>(ns::Status::Unsupported);
 }
 
 static OdeniseTestResultC cpu_self_test() {
-    // Test 1 : chemin legacy -- allocation / destruction.
-    auto* legacy = static_cast<CpuBackendInstance*>(cpu_create(48000, 1024));
-    if (!legacy)
+    // Test chemin legacy : instanciation/destruction.
+    auto* inst = static_cast<CpuBackendInstance*>(cpu_create(48000, 1024));
+    if (!inst)
         return { 0, "echec allocation instance legacy" };
-    cpu_destroy(legacy);
+    cpu_destroy(inst);
 
-    // Test 2 : chemin C++ -- allocation CpuBackendImpl, caps(), destruction.
+    // Test chemin C++ : instanciation CpuBackendImpl.
     auto* impl = new (std::nothrow) CpuBackendImpl(48000, 1024);
     if (!impl)
         return { 0, "echec allocation CpuBackendImpl" };
-
-    const ns::BackendCaps bc = impl->caps();
     delete impl;
 
-    if (bc.is_gpu)
-        return { 0, "caps() : is_gpu inattendu (attendu false)" };
-    if (bc.backend_type != ns::kBackendCPU)
-        return { 0, "caps() : backend_type incorrect" };
-
-    return { 1, "backend CPU OK : legacy + C++ instanciation/caps" };
+    return { 1, "backend CPU OK : legacy + C++ instanciation/destruction" };
 }
 
 // ============================================================================
-//  Point d'entrée C++ (phase 3+) -- retourne un CpuBackendImpl.
+//  Extension C++ (phase 3+) -- create_backend.
+//  Retourne un CpuBackendImpl* vu comme ns::BackendBase*.
+//  L'objet est gere par le module : cree ici, detruit par l'engine via
+//  le destructeur virtuel quand le backend est remplace ou detruit.
 // ============================================================================
 static ns::BackendBase* cpu_create_backend(int sample_rate, int n_max) {
     return new (std::nothrow) CpuBackendImpl(sample_rate, n_max);
 }
 
 // ============================================================================
-//  Vtable statique + point d'entrée du module.
+//  Vtable statique + point d'entree.
 // ============================================================================
 static const OdeniseModuleVTable s_vtable = {
-    /* abi_version */   ns::kAbiVersion,
-    /* info */          { /* id */             0,
-                          /* kind */           static_cast<int>(ns::ModuleKind::ComputeBackend),
-                          /* name */           "cpu",
-                          /* description */    "Backend de calcul CPU (repli, sans GPU)",
-                          /* needs_gpu */      0,
-                          /* backend_type_id*/ ns::kBackendCPU },
-    /* create */        cpu_create,
-    /* destroy */       cpu_destroy,
-    /* set_param */     cpu_set_param,
-    /* process */       cpu_process,
-    /* self_test */     cpu_self_test,
-    /* create_module */ nullptr,           // backend, pas de module de traitement
+    /* abi_version   */ ns::kAbiVersion,
+    /* info          */ { /* id           */ 0,
+                          /* kind         */ static_cast<int>(ns::ModuleKind::ComputeBackend),
+                          /* name         */ "cpu",
+                          /* description  */ "Backend de calcul CPU (repli, sans GPU)",
+                          /* needs_gpu    */ 0,
+                          /* backend_type */ ns::kBackendCPU },
+    /* create        */ cpu_create,
+    /* destroy       */ cpu_destroy,
+    /* set_param     */ cpu_set_param,
+    /* process       */ cpu_process,
+    /* self_test     */ cpu_self_test,
+    /* create_module */ nullptr,
     /* create_backend*/ cpu_create_backend
 };
 

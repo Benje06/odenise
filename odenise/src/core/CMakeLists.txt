@@ -15,9 +15,7 @@
 
 set(ODENISE_CORE_SOURCES
     engine.cpp
-    chain/audio_chain.cpp
     registry/loader.cpp
-    tools/logger.cc
 )
 
 add_library(odenise_core SHARED ${ODENISE_CORE_SOURCES})
@@ -55,6 +53,10 @@ target_compile_definitions(odenise_core PRIVATE
 if(UNIX AND NOT APPLE)
     target_link_libraries(odenise_core PUBLIC ${CMAKE_DL_LIBS})
 endif()
+
+# Libs utilitaires partagees : LogManager singleton et AudioChain.
+# PUBLIC : transitent vers les consommateurs de odenise_core (tests, plugin).
+target_link_libraries(odenise_core PUBLIC odenise_log odenise_chain)
 
 # Avertissements stricts, C++ uniquement (pas vers nvcc)
 if(MSVC)

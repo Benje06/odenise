@@ -34,7 +34,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #
 #  Layout sous <prefix> :
 #    bin/                              -> odenise(.exe), test_core(.exe)
-#    lib/                              -> libodenise.so (.dll va dans bin/ sous Windows)
+#    lib/                              -> libodenise.so, libodenise_log.so,
+#                                         libodenise_chain.so
+#                                         (.dll va dans bin/ sous Windows)
 #    include/odenise/<version>/        -> ns_engine.h (depuis src/core/interfaces/)
 #    share/odenise/<version>/modules/  -> passthrough.so/.dll, ...
 #    share/odenise/<version>/data/     -> cfg/, ui/ (futur)
@@ -117,7 +119,12 @@ endif()
 
 # ---------------------------------------------------------------------------
 #  Sous-repertoires
+#  Ordre : libs utilitaires d'abord (odenise_log, odenise_chain),
+#  puis le coeur (odenise_core) qui les consomme,
+#  puis les modules et les tests.
 # ---------------------------------------------------------------------------
+add_subdirectory(lib/log)
+add_subdirectory(lib/chain)
 add_subdirectory(src/core)
 
 if(ODENISE_BUILD_MODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/CMakeLists.txt")
