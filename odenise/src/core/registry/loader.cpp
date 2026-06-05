@@ -124,10 +124,19 @@ bool ModuleRegistry::tryLoad(const std::filesystem::path& file) {
         return false;
     }
 
-    if (!vt->create || !vt->destroy || !vt->process) {
+    // Un module est valide s'il expose le chemin C++ (create_module ou
+    // create_backend) OU le chemin legacy complet (create+destroy+process).
+    // Les deux peuvent coexister ; au moins l'un doit etre present.
+    const bool has_cpp    = (vt->create_module != nullptr)
+                         || (vt->create_backend != nullptr);
+    const bool has_legacy = (vt->create != nullptr)
+                         && (vt->destroy != nullptr)
+                         && (vt->process != nullptr);
+    if (!has_cpp && !has_legacy) {
         msg_err = error(__func__,
             _("Loader cannot use vtable of '") + subdir + _("' module '") + fname + "'",
-            _("incomplete vtable (create/destroy/process)"));
+            _("incomplete vtable : neither C++ (create_module/create_backend)"
+              " nor legacy (create/destroy/process) is present"));
         LOG_ERR(msg_err);
         dl_close(handle);
         return false;

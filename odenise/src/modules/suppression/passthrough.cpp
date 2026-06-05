@@ -1,86 +1,137 @@
 // ============================================================================
 //  passthrough.cpp -- Module de suppression neutre (sortie = entree).
 //
-//  Premier module dynamique : valide la chaine dlopen de bout en bout.
+//  Phase 3b : implemente ModuleBase (chemin C++) + expose create_module.
+//  Valide la chaine dlopen + AudioChain + BackendContext de bout en bout.
 //  Derriere la frontiere C (vtable), l'implementation est du C++ normal.
 // ============================================================================
-#include "ns_engine.h"    // OdeniseModuleVTable, OdeniseProcessCtx, etc.
+#include "ns_engine.h"    // OdeniseModuleVTable, ModuleBase, etc.
 #include <cstring>        // std::memcpy
-#include <algorithm>      // std::min
+#include <new>            // std::nothrow
 
-// --- Instance C++ (opaque cote coeur, vue comme void*) ---
-struct PassthroughInstance {
-    int sample_rate = 48000;
-    int n_max       = 4096;
+// ============================================================================
+//  PassthroughModule -- implementation de ModuleBase.
+//  Latence nulle. Copie memcpy de l'entree vers le buffer de sortie.
+//  Le buffer de sortie est alloue dans le scratch du backend a l'install.
+// ============================================================================
+class PassthroughModule final : public ns::ModuleBase {
+public:
+    PassthroughModule(int /*sample_rate*/, int n_max)
+        : n_max_(n_max) {}
+
+    ~PassthroughModule() override = default;
+
+    // [CTRL] Latence algorithmique : zero (copie directe).
+    int latency_samples() const noexcept override { return 0; }
+
+    // [CTRL] Installation sur le contexte backend.
+    // Alloue le buffer de sortie dans le scratch pre-alloue par le backend.
+    // Retourne false si ctx est nul ou si le scratch est insuffisant.
+    bool install(ns::BackendContext* ctx) override {
+        if (!ctx) return false;
+        const std::size_t bytes = static_cast<std::size_t>(n_max_) * sizeof(float);
+        output_buf_ = static_cast<float*>(ctx->scratch_buf(bytes));
+        return (output_buf_ != nullptr);
+    }
+
+    // [CTRL] Liberation : le scratch appartient au backend, on ne le libere pas.
+    void uninstall(ns::BackendContext* /*ctx*/) noexcept override {
+        output_buf_ = nullptr;
+        input_      = nullptr;
+    }
+
+    // [RT] Parametre a chaud : pas de parametre pour le passthrough.
+    void set_param(ns::ParamId /*id*/, float /*value*/) noexcept override {}
+
+    // [CTRL] Buffer de sortie (pointe dans le scratch du backend).
+    void* output_buf() noexcept override { return output_buf_; }
+
+    // [CTRL] Cablage : le backend indique l'entree au cablage.
+    void set_input(const void* src) noexcept override {
+        input_ = static_cast<const float*>(src);
+    }
+
+    // [RT] Traitement : memcpy entree -> sortie. Zero allocation, zero verrou.
+    void process(int num_frames) noexcept override {
+        if (!input_ || !output_buf_ || num_frames <= 0) return;
+        std::memcpy(output_buf_, input_,
+                    static_cast<std::size_t>(num_frames) * sizeof(float));
+    }
+
+private:
+    int          n_max_      = 4096;
+    const float* input_      = nullptr;   // entree cablee (pointeur externe)
+    float*       output_buf_ = nullptr;   // dans le scratch du backend
 };
 
-// --- Fonctions de la vtable (extern "C" noexcept) ---
-static OdeniseModuleInstance pt_create(int sample_rate, int n_max) {
-    auto* inst = new (std::nothrow) PassthroughInstance;
-    if (!inst) return nullptr;
-    inst->sample_rate = sample_rate;
-    inst->n_max       = n_max;
-    return static_cast<OdeniseModuleInstance>(inst);
-}
+// ============================================================================
+//  self_test -- valide PassthroughModule sans moteur ni backend reel.
+//  Utilise un BackendContext minimal en pile pour les tests autonomes.
+// ============================================================================
+namespace {
 
-static void pt_destroy(OdeniseModuleInstance self) {
-    delete static_cast<PassthroughInstance*>(self);
-}
+// BackendContext de test : scratch en pile, pas de stream.
+class ScratchContext final : public ns::BackendContext {
+public:
+    explicit ScratchContext(float* buf) : buf_(buf) {}
+    void* scratch_buf(std::size_t /*bytes*/) noexcept override { return buf_; }
+    void* compute_stream() noexcept override { return nullptr; }
+    int   backend_type()   const noexcept override { return ns::kBackendCPU; }
+private:
+    float* buf_;
+};
 
-static int pt_set_param(OdeniseModuleInstance /*self*/, int /*param_id*/, float /*value*/) {
-    return static_cast<int>(ns::Status::Ok);   // pas de parametre
-}
-
-static int pt_process(OdeniseModuleInstance /*self*/, OdeniseProcessCtx* ctx) {
-    if (!ctx || !ctx->in || !ctx->out || ctx->in_channels < 1)
-        return static_cast<int>(ns::Status::InvalidArg);
-    // Copie le premier canal d'entree vers la sortie (passthrough mono).
-    std::memcpy(ctx->out, ctx->in[0],
-                static_cast<std::size_t>(ctx->num_frames) * sizeof(float));
-    return static_cast<int>(ns::Status::Ok);
-}
+} // namespace
 
 static OdeniseTestResultC pt_self_test() {
-    // Test minimal : creer une instance, traiter 4 echantillons, verifier in==out.
-    auto* inst = static_cast<PassthroughInstance*>(pt_create(48000, 1024));
-    if (!inst)
-        return { 0, "echec allocation instance" };
+    constexpr int N = 4;
+    float in_buf[N]  = { 0.1f, -0.5f, 0.0f, 1.0f };
+    float out_buf[N] = {};
 
-    float in_buf[4]  = { 0.1f, -0.5f, 0.0f, 1.0f };
-    float out_buf[4] = {};
-    const float* in_ptr = in_buf;
-    OdeniseProcessCtx ctx;
-    ctx.in           = &in_ptr;
-    ctx.out          = out_buf;
-    ctx.in_channels  = 1;
-    ctx.num_frames   = 4;
+    ScratchContext ctx(out_buf);
+    PassthroughModule mod(48000, N);
 
-    int rc = pt_process(inst, &ctx);
-    pt_destroy(inst);
+    if (!mod.install(&ctx))
+        return { 0, "install a echoue" };
 
-    if (rc != 0)
-        return { 0, "process a renvoye une erreur" };
+    mod.set_input(in_buf);
+    mod.process(N);
+    mod.uninstall(&ctx);
 
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < N; ++i) {
         if (in_buf[i] != out_buf[i])
             return { 0, "in != out apres passthrough" };
     }
-    return { 1, "passthrough OK : 4 echantillons in == out" };
+    return { 1, "passthrough OK : 4 echantillons in == out (chemin C++)" };
 }
 
-// --- Vtable statique + point d'entree ---
+// ============================================================================
+//  Extension C++ (phase 3b) -- create_module.
+//  Retourne un PassthroughModule* vu comme ns::ModuleBase*.
+//  Gere par le module : cree ici, detruit par l'engine via destructeur virtuel.
+// ============================================================================
+static ns::ModuleBase* pt_create_module(int sample_rate, int n_max) {
+    return new (std::nothrow) PassthroughModule(sample_rate, n_max);
+}
+
+// ============================================================================
+//  Vtable statique + point d'entree.
+// ============================================================================
 static const OdeniseModuleVTable s_vtable = {
-    /* abi_version */ ns::kAbiVersion,
-    /* info */        { /* id */ 1,
-                        /* kind */ static_cast<int>(ns::ModuleKind::Suppression),
-                        /* name */ "passthrough",
-                        /* description */ "Module neutre : sortie = entree (validation de la chaine)",
-                        /* needs_gpu */ 0 },
-    /* create */      pt_create,
-    /* destroy */     pt_destroy,
-    /* set_param */   pt_set_param,
-    /* process */     pt_process,
-    /* self_test */   pt_self_test
+    /* abi_version   */ ns::kAbiVersion,
+    /* info          */ { /* id          */ 1,
+                          /* kind        */ static_cast<int>(ns::ModuleKind::Suppression),
+                          /* name        */ "passthrough",
+                          /* description */ "Module neutre : sortie = entree (validation de la chaine)",
+                          /* needs_gpu   */ 0,
+                          /* backend_type_id */ ns::kBackendAny },
+    /* create        */ nullptr,
+    /* destroy       */ nullptr,
+    /* set_param     */ nullptr,
+    /* process       */ nullptr,
+    /* self_test     */ pt_self_test,
+    /* create_module */ pt_create_module,
+    /* create_backend*/ nullptr
 };
 
 extern "C" ODENISE_EXPORT const OdeniseModuleVTable* odenise_module_entry() {

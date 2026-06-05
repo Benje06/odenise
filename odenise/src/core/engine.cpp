@@ -1,11 +1,10 @@
 // engine.cpp -- orchestration du moteur.
 //
-// Phase 3a : l'engine utilise AudioChain pour la chaine de traitement.
-// Compatibilite descendante : les modules de la phase 1/2 (vtable C sans
-// create_module/create_backend) continuent de fonctionner via le chemin
-// legacy (suppression_vt_ / backend_vt_).
+// L'engine ordonnance le chargement/dechargement des modules sur ordre de
+// la config ou de l'interface. Il ne possede pas la chaine audio : c'est le
+// backend qui detient AudioChain en interne et recoit les ordres
+// install_module / uninstall_module via BackendBase.
 #include "ns_engine.h"
-#include "chain/audio_chain.h"
 #include "registry/module_registry.h"
 #include "tools/logger.h"
 
@@ -76,11 +75,11 @@ public:
         releaseBackend();
     }
 
-    // [RT] Latence declaree courante.
+    // [RT] Latence declaree courante : lue depuis le backend.
+    // Champ ecrit hors RT par le backend a chaque (un)install_module.
     int latencySamples() const noexcept override {
-        return chain_.declared_latency_samples() > 0
-               ? chain_.declared_latency_samples()
-               : cfg_.n;  // repli sur cfg_.n si chaine vide (legacy)
+        if (!backend_base_) return 0;
+        return backend_base_->last_latency_info().declared_samples;
     }
 
     Status reconfigure(const RuntimeConfig& cfg, ApplyResult& how) override {
@@ -100,40 +99,26 @@ public:
         return {};
     }
 
+    // [RT] Traitement : delegue au backend qui itere sur sa chaine interne.
+    // Unsupported si pas de backend ou pas de module de suppression installe.
     Status process(std::span<const TrackIO> tracks,
                    int num_frames) noexcept override {
+
+        if (!backend_base_ || !suppression_module_)
+            return Status::Unsupported;
 
         for (const auto& t : tracks) {
             if (!t.in || !t.out || t.in_channels < 1)
                 return Status::InvalidArg;
 
-            // --- chemin phase 3+ : backend C++ ---
-            if (backend_base_) {
-                const Status rc = backend_base_->process(t.in, t.out, num_frames);
-                if (rc != Status::Ok) return rc;
-                continue;
-            }
-
-            // --- chemin legacy phase 1/2 : vtable C ---
-            if (!suppression_vt_ || !suppression_inst_)
-                return Status::Unsupported;
-
-            OdeniseProcessCtx ctx;
-            ctx.in          = t.in;
-            ctx.out         = t.out;
-            ctx.in_channels = t.in_channels;
-            ctx.num_frames  = num_frames;
-
-            const int rc = suppression_vt_->process(suppression_inst_, &ctx);
-            if (rc != static_cast<int>(Status::Ok))
-                return static_cast<Status>(rc);
+            const Status rc = backend_base_->process(t.in, t.out, num_frames);
+            if (rc != Status::Ok) return rc;
         }
         return Status::Ok;
     }
 
     Status setParam(ParamId id, float value) noexcept override {
-        // Transmet aux modules de la chaine (phase 3+).
-        // Phase legacy : ignore (pas de set_param en RT sur la vtable C ici).
+        // Transmet aux modules de la chaine via le backend (futur).
         (void)id; (void)value;
         return Status::Ok;
     }
@@ -156,21 +141,18 @@ public:
     }
 
     // --- mesures de performance -----------------------------------------
+    // L'engine ne stocke aucun chiffre : il transmet la lecture atomique
+    // du backend. La latence declaree est ecrite par le backend a chaque
+    // (un)install_module ; la latence mesuree et les stats sont publiees
+    // par measure() avec le drapeau measure_ready_ (release/acquire).
 
     LatencyInfo latencyInfo() const override {
-        LatencyInfo li;
-        // Latence declaree : sommee par AudioChain au cablage.
-        li.declared_samples = chain_.declared_latency_samples();
+        if (!backend_base_) return {};
+        LatencyInfo li = backend_base_->last_latency_info();
         li.declared_ms = (caps_.sample_rate > 0)
             ? (static_cast<float>(li.declared_samples)
                / static_cast<float>(caps_.sample_rate)) * 1000.0f
             : 0.0f;
-        // Latence mesuree : lue depuis le backend si disponible.
-        if (backend_base_ && backend_base_->measure_ready()) {
-            const auto& bli      = backend_base_->last_latency_info();
-            li.measured_samples  = bli.measured_samples;
-            li.measured_ms       = bli.measured_ms;
-        }
         li.in_sync = (li.declared_samples == li.measured_samples);
         return li;
     }
@@ -186,21 +168,14 @@ public:
 
 private:
     // -----------------------------------------------------------------------
-    //  Gestion du backend
-    //  Tente d'abord le chemin C++ (create_backend), repli sur vtable C.
+    //  Gestion du backend (chemin C++ uniquement)
     // -----------------------------------------------------------------------
     void releaseBackend() {
-        // Chemin C++ : backend_base_ est possede par le module via la vtable C.
-        // Sa destruction se fait via destroy() de la vtable, qui detruit l'objet
-        // C++ retourne par create_backend().
+        // backend_base_ est cree par create_backend() du module. L'engine
+        // en prend la propriete et le detruit via le destructeur virtuel.
+        delete backend_base_;
         backend_base_ = nullptr;
-
-        // Chemin legacy
-        if (backend_vt_ && backend_inst_) {
-            backend_vt_->destroy(backend_inst_);
-            backend_inst_ = nullptr;
-        }
-        backend_vt_ = nullptr;
+        backend_vt_   = nullptr;
     }
 
     void bindBackend(int id) {
@@ -222,43 +197,38 @@ private:
             return;
         }
 
-        // Chemin C++ (phase 3+) : create_backend disponible ?
-        if (backend_vt_->create_backend) {
-            backend_base_ = backend_vt_->create_backend(caps_.sample_rate, caps_.n_max);
-            if (backend_base_) {
-                LOG(_("engine: bound C++ backend id=") + std::to_string(id));
-                return;
-            }
-            // Echec create_backend : repli sur vtable C.
-            LOG(_("engine: create_backend returned null, falling back to legacy"));
-        }
-
-        // Chemin legacy (phase 1/2) : vtable C.
-        backend_inst_ = backend_vt_->create(caps_.sample_rate, caps_.n_max);
-        if (!backend_inst_) {
-            LOG_ERR(error("engine", _("compute backend create failed"),
-                          _("id=") + std::to_string(id)));
+        if (!backend_vt_->create_backend) {
+            std::string msg_err = error("engine",
+                _("compute backend has no create_backend"),
+                _("id=") + std::to_string(id));
+            LOG_ERR(msg_err);
             backend_vt_ = nullptr;
             return;
         }
-        LOG(_("engine: bound legacy backend id=") + std::to_string(id));
+
+        backend_base_ = backend_vt_->create_backend(caps_.sample_rate, caps_.n_max);
+        if (!backend_base_) {
+            std::string msg_err = error("engine",
+                _("create_backend returned null"),
+                _("id=") + std::to_string(id));
+            LOG_ERR(msg_err);
+            backend_vt_ = nullptr;
+            return;
+        }
+        LOG(_("engine: bound backend id=") + std::to_string(id));
     }
 
     // -----------------------------------------------------------------------
-    //  Gestion du module de suppression
-    //  Tente d'abord le chemin C++ (create_module + AudioChain), repli legacy.
+    //  Gestion du module de suppression (chemin C++ uniquement)
+    //  L'engine ordonnance : il demande au backend d'installer/retirer le
+    //  module. Le backend gere sa chaine en interne.
     // -----------------------------------------------------------------------
     void releaseSuppression() {
-        // Chemin C++ : retire de la chaine, uninstall via AudioChain.
         if (suppression_module_) {
-            chain_.remove(backend_base_, ModuleKind::Suppression, 0);
+            if (backend_base_)
+                backend_base_->uninstall_module(ModuleKind::Suppression, 0);
+            delete suppression_module_;
             suppression_module_ = nullptr;
-        }
-
-        // Chemin legacy
-        if (suppression_vt_ && suppression_inst_) {
-            suppression_vt_->destroy(suppression_inst_);
-            suppression_inst_ = nullptr;
         }
         suppression_vt_ = nullptr;
     }
@@ -272,43 +242,54 @@ private:
             return;
         }
 
+        // Pre-requis : un backend doit etre lie pour accueillir le module.
+        if (!backend_base_) {
+            std::string msg_err = error("engine",
+                _("cannot bind suppression module without backend"),
+                _("id=") + std::to_string(id));
+            LOG_ERR(msg_err);
+            return;
+        }
+
         suppression_vt_ = registry_.find(ModuleKind::Suppression, id);
         if (!suppression_vt_) {
             LOG(_("engine: no suppression module with id ") + std::to_string(id));
             return;
         }
 
-        // Chemin C++ (phase 3+) : create_module disponible ?
-        if (suppression_vt_->create_module) {
-            suppression_module_ =
-                suppression_vt_->create_module(caps_.sample_rate, caps_.n_max);
-            if (suppression_module_) {
-                // Installe dans la chaine (position 0 : seul module pour l'instant).
-                if (!chain_.install(backend_base_,
-                                    suppression_module_,
-                                    ModuleKind::Suppression, 0)) {
-                    LOG_ERR(error("engine",
-                        _("suppression module chain install failed"),
-                        _("id=") + std::to_string(id)));
-                    suppression_module_ = nullptr;
-                    suppression_vt_ = nullptr;
-                    return;
-                }
-                LOG(_("engine: bound C++ suppression module id=") + std::to_string(id));
-                return;
-            }
-            LOG(_("engine: create_module returned null, falling back to legacy"));
-        }
-
-        // Chemin legacy (phase 1/2) : vtable C.
-        suppression_inst_ = suppression_vt_->create(caps_.sample_rate, caps_.n_max);
-        if (!suppression_inst_) {
-            LOG_ERR(error("engine", _("suppression module create failed"),
-                          _("id=") + std::to_string(id)));
+        if (!suppression_vt_->create_module) {
+            std::string msg_err = error("engine",
+                _("suppression module has no create_module"),
+                _("id=") + std::to_string(id));
+            LOG_ERR(msg_err);
             suppression_vt_ = nullptr;
             return;
         }
-        LOG(_("engine: bound legacy suppression module id=") + std::to_string(id));
+
+        suppression_module_ =
+            suppression_vt_->create_module(caps_.sample_rate, caps_.n_max);
+        if (!suppression_module_) {
+            std::string msg_err = error("engine",
+                _("create_module returned null"),
+                _("id=") + std::to_string(id));
+            LOG_ERR(msg_err);
+            suppression_vt_ = nullptr;
+            return;
+        }
+
+        // Ordre au backend : installer le module a la position 0.
+        if (!backend_base_->install_module(suppression_module_,
+                                           ModuleKind::Suppression, 0)) {
+            std::string msg_err = error("engine",
+                _("backend install_module failed"),
+                _("id=") + std::to_string(id));
+            LOG_ERR(msg_err);
+            delete suppression_module_;
+            suppression_module_ = nullptr;
+            suppression_vt_     = nullptr;
+            return;
+        }
+        LOG(_("engine: bound suppression module id=") + std::to_string(id));
     }
 
     // -----------------------------------------------------------------------
@@ -317,17 +298,16 @@ private:
     EngineCaps              caps_;
     RuntimeConfig           cfg_;
     detail::ModuleRegistry  registry_;
-    chain::AudioChain       chain_;
 
-    // Chemin C++ (phase 3+)
-    BackendBase*            backend_base_       = nullptr; // possede par le module
-    ModuleBase*             suppression_module_ = nullptr;
+    // Backend et module de suppression actifs. L'engine en a la propriete :
+    // crees via create_backend / create_module, detruits via delete.
+    // La chaine audio est detenue par le backend, pas par l'engine.
+    BackendBase*               backend_base_       = nullptr;
+    ModuleBase*                suppression_module_ = nullptr;
 
-    // Chemin legacy (phase 1/2 -- compatibilite)
-    const OdeniseModuleVTable* suppression_vt_   = nullptr;
-    OdeniseModuleInstance      suppression_inst_  = nullptr;
-    const OdeniseModuleVTable* backend_vt_       = nullptr;
-    OdeniseModuleInstance      backend_inst_      = nullptr;
+    // Vtables conservees pour selfTest() et rebind eventuel.
+    const OdeniseModuleVTable* backend_vt_         = nullptr;
+    const OdeniseModuleVTable* suppression_vt_     = nullptr;
 };
 
 std::unique_ptr<Engine> createEngine(const EngineCaps& caps,

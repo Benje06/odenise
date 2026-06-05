@@ -169,9 +169,10 @@ bool AudioChain::install(BackendBase*  backend,
     const int ctx = resolve_context(backend, mod);
 
     // Installation sur le contexte backend.
-    // Pour l'etape 3a : le backend ne fournit pas encore de BackendContext*
-    // reel -- on passe nullptr, le module CPU l'accepte.
-    if (!mod->install(nullptr)) {
+    // Le backend fournit son BackendContext (scratch, stream) ; le module
+    // y alloue ses buffers internes et valide la compatibilite.
+    ns::BackendContext* bctx = backend ? backend->context() : nullptr;
+    if (!mod->install(bctx)) {
         std::string msg_err = error(__func__,
             _("audio_chain: module install failed"),
             std::string(_("kind=")) + kindName(kind)

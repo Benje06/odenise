@@ -148,6 +148,19 @@ public:
     // Somme des latences declarees par tous les modules de la chaine.
     CHAIN int declared_latency_samples() const noexcept { return declared_latency_; }
 
+    // -----------------------------------------------------------------------
+    //  Acces aux extremites de la chaine -- hors RT.
+    //  Le backend cable l'entree audio sur first_module() et copie la
+    //  sortie depuis last_module()->output_buf().
+    //  Retourne nullptr si la chaine est vide.
+    // -----------------------------------------------------------------------
+    ModuleBase* first_module() const noexcept {
+        return nodes_.empty() ? nullptr : nodes_.front().module;
+    }
+    ModuleBase* last_module() const noexcept {
+        return nodes_.empty() ? nullptr : nodes_.back().module;
+    }
+
     // Callback declenche a chaque recablage avec la nouvelle latence declaree.
     // L'engine l'enregistre pour notifier l'hote audio (PDC).
     // Callback declenche a chaque recablage avec la nouvelle latence declaree.

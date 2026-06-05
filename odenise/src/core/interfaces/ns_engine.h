@@ -364,6 +364,11 @@ public:
     // [CTRL] Capabilities de la ressource de calcul.
     virtual BackendCaps caps() const noexcept = 0;
 
+    // [CTRL] Contexte de ressource a transmettre aux modules lors de
+    // l'installation. Retourne le BackendContext possede par le backend
+    // (CPU pool, CUDA stream...). Jamais nullptr sur un backend initialise.
+    virtual BackendContext* context() noexcept = 0;
+
     // [CTRL] Declenche la mesure de latence reelle sur N blocs de bruit blanc.
     // Hors RT uniquement. Ecrit last_latency_ et last_stats_ a la fin,
     // puis leve measure_ready_ (release). Jamais appele par process().
