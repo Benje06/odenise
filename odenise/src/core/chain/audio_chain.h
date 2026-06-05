@@ -110,25 +110,29 @@ public:
     // -----------------------------------------------------------------------
 
     // Installe un module a la position donnee dans la chaine.
+    // ctx est le BackendContext fourni par le backend au module (scratch, stream).
     // Recable les voisins, insere un noeud de transfert si la transition
     // de contexte l'exige (CPU->GPU ou GPU->CPU).
     // Retourne false si le module refuse l'installation (incompatibilite).
-    CHAIN bool install(BackendBase*  backend,
-                       ModuleBase*   mod,
-                       ModuleKind    kind,
-                       int           position);
+    CHAIN bool install(BackendBase*    backend,
+                       BackendContext* ctx,
+                       ModuleBase*     mod,
+                       ModuleKind      kind,
+                       int             position);
 
     // Insere un module a la position donnee (decale les suivants).
-    CHAIN bool insert(BackendBase*  backend,
-                      ModuleBase*   mod,
-                      ModuleKind    kind,
-                      int           position);
+    CHAIN bool insert(BackendBase*    backend,
+                      BackendContext* ctx,
+                      ModuleBase*     mod,
+                      ModuleKind      kind,
+                      int             position);
 
     // Remplace le module a la position donnee.
-    CHAIN bool replace(BackendBase* backend,
-                       ModuleBase*  mod,
-                       ModuleKind   kind,
-                       int          position);
+    CHAIN bool replace(BackendBase*    backend,
+                       BackendContext* ctx,
+                       ModuleBase*     mod,
+                       ModuleKind      kind,
+                       int             position);
 
     // Retire le module a la position donnee et recable les voisins.
     CHAIN void remove(BackendBase* backend,
@@ -148,19 +152,8 @@ public:
     // Somme des latences declarees par tous les modules de la chaine.
     CHAIN int declared_latency_samples() const noexcept { return declared_latency_; }
 
-    // -----------------------------------------------------------------------
-    //  Acces aux extremites de la chaine -- hors RT.
-    //  Le backend cable l'entree audio sur first_module() et copie la
-    //  sortie depuis last_module()->output_buf().
-    //  Retourne nullptr si la chaine est vide.
-    // -----------------------------------------------------------------------
-    ModuleBase* first_module() const noexcept {
-        return nodes_.empty() ? nullptr : nodes_.front().module;
-    }
-    ModuleBase* last_module() const noexcept {
-        return nodes_.empty() ? nullptr : nodes_.back().module;
-    }
-
+    // Callback declenche a chaque recablage avec la nouvelle latence declaree.
+    // L'engine l'enregistre pour notifier l'hote audio (PDC).
     // Callback declenche a chaque recablage avec la nouvelle latence declaree.
     // L'engine l'enregistre pour notifier l'hote audio (PDC).
     // Pointeur de fonction brut : pas de std::function (C4251 MSVC).

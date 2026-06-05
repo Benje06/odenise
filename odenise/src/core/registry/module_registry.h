@@ -16,14 +16,22 @@
 
 namespace ns::detail {
 
-// Un module charge : poignee de lib (gardee ouverte), table de fonctions,
-// et metadonnees converties en types C++ (copiees, donc independantes du
-// cycle de vie des const char* du module).
+// Un module charge : poignee de lib (gardee ouverte), fonction d'entree
+// pour instancier les objets avec les bonnes caps, et metadonnees converties
+// en types C++ (copiees, donc independantes du cycle de vie des const char*).
+// Les objets C++ (base, backend) sont crees par l'engine via make() avec les
+// vraies caps (sample_rate, n_max) -- pas par le loader qui ne les connait pas.
 struct LoadedModule {
-    void*                      handle = nullptr;   // LibHandle opaque (HMODULE/void*)
-    const OdeniseModuleVTable* vtable = nullptr;   // possede par le module
-    ModuleInfo                 info;               // converti depuis OdeniseModuleInfoC
-    std::string                path;               // chemin du .so/.dll
+    void*                  handle    = nullptr;  // LibHandle opaque (HMODULE/void*)
+    OdeniseModuleEntryFn   entry_fn  = nullptr;  // fabrique : entry(sr, n_max)
+    ModuleInfo             info;                 // converti depuis OdeniseModuleInfoC
+    std::string            path;                 // chemin du .so/.dll
+
+    // Instancie un objet avec les caps reelles. Retourne nullptr si echec.
+    // Pour ComputeBackend, l'objet implemente aussi BackendBase.
+    ns::ModuleBase* make(int sample_rate, int n_max) const {
+        return entry_fn ? entry_fn(sample_rate, n_max) : nullptr;
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -47,8 +55,17 @@ public:
     // Enumere les modules d'une famille (pour l'UI).
     std::vector<ModuleInfo> list(ModuleKind kind) const;
 
-    // Table de fonctions d'un module (kind + id), ou nullptr si absent.
-    const OdeniseModuleVTable* find(ModuleKind kind, int id) const;
+    // Retourne le ModuleBase* d'un module (kind + id), instancie avec les
+    // caps fournies. L'appelant prend possession de l'objet (delete requis).
+    // Retourne nullptr si absent ou echec d'instanciation.
+    ns::ModuleBase*  make(ModuleKind kind, int id,
+                          int sample_rate, int n_max) const;
+
+    // Retourne le BackendBase* d'un backend (ComputeBackend + id), instancie
+    // avec les caps fournies. L'appelant prend possession de l'objet.
+    // Retourne nullptr si absent ou si ce n'est pas un ComputeBackend.
+    ns::BackendBase* make_backend(int id,
+                                  int sample_rate, int n_max) const;
 
     // Execute le self-test embarque d'un module.
     TestResult selfTest(ModuleKind kind, int id) const;

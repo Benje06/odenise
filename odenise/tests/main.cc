@@ -189,6 +189,7 @@ namespace {
         LOG(msg);
         return 0;
     }
+
     int run_latency_test(std::unique_ptr<ns::Engine>& engine) {
         msg = _("=== test: latency info ===");
         LOG(msg);
