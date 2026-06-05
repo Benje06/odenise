@@ -40,6 +40,46 @@
   #define ODENISE_EXPORT __attribute__((visibility("default")))
 #endif
 
+// ===========================================================================
+//  STRUCTS POD FRONTIERE INTER-COMPILATEURS
+//
+//  Ces structs traversent la frontiere entre compilateurs differents
+//  (GCC/UCRT64 pour CPU, MSVC+nvcc pour CUDA). Types POD uniquement.
+//  Possedees par le module (litteraux statiques, valides tant que le module
+//  est charge). Declarees globalement pour etre accessibles sans qualification
+//  depuis les modules externes quel que soit leur compilateur.
+//
+//  Le coeur construit les types riches (ModuleInfo, BackendCaps) a partir
+//  de ces structs -- std::string ne traverse jamais la frontiere.
+// ===========================================================================
+
+struct OdeniseModuleInfoC {
+    int         abi_version;     // DOIT valoir ns::kAbiVersion
+    int         id;
+    int         kind;            // valeur de ns::ModuleKind
+    const char* name;
+    const char* description;
+    int         needs_gpu;       // 0/1
+    int         backend_type_id; // ns::kBackendAny, kBackendCPU, kBackendCUDA, ...
+                                 // ou valeur libre pour un backend tiers (>99)
+};
+
+struct OdeniseBackendCapsC {
+    const char*   name;
+    int           is_gpu;
+    unsigned long vram_bytes;
+    int           cc_major;
+    int           cc_minor;
+    int           has_fp16;
+    int           has_tensor;
+    int           backend_type;
+};
+
+struct OdeniseTestResultC {
+    int         passed; // 0/1
+    const char* detail;
+};
+
 namespace ns {
 
 inline constexpr int kAbiVersion = 1;
@@ -299,6 +339,16 @@ class ModuleBase {
 public:
     virtual ~ModuleBase() = default;
 
+    // [CTRL] Metadonnees POD -- frontiere inter-compilateurs.
+    // Retourne un pointeur vers une struct statique possedee par le module.
+    // Valide tant que le module est charge. Jamais nul.
+    virtual const OdeniseModuleInfoC* info_c() const noexcept = 0;
+
+    // [CTRL] Self-test embarque -- frontiere inter-compilateurs.
+    // Retourne un pointeur vers une struct statique possedee par le module.
+    // Valide tant que le module est charge. Jamais nul.
+    virtual const OdeniseTestResultC* self_test_c() const noexcept = 0;
+
     // [CTRL] Latence algorithmique declaree par ce module, en samples.
     // Sommee au cablage pour la PDC. Doit etre constante apres creation.
     virtual int latency_samples() const noexcept = 0;
@@ -348,6 +398,21 @@ class BackendBase {
 public:
     virtual ~BackendBase() = default;
 
+    // [CTRL] Metadonnees POD -- frontiere inter-compilateurs.
+    // Retourne un pointeur vers une struct statique possedee par le module.
+    // Valide tant que le module est charge. Jamais nul.
+    virtual const OdeniseModuleInfoC* info_c() const noexcept = 0;
+
+    // [CTRL] Capabilities POD -- frontiere inter-compilateurs.
+    // Le coeur construit BackendCaps (avec std::string) depuis cette struct.
+    // Valide tant que le module est charge. Jamais nul.
+    virtual const OdeniseBackendCapsC* caps_c() const noexcept = 0;
+
+    // [CTRL] Self-test embarque -- frontiere inter-compilateurs.
+    // Retourne un pointeur vers une struct statique possedee par le module.
+    // Valide tant que le module est charge. Jamais nul.
+    virtual const OdeniseTestResultC* self_test_c() const noexcept = 0;
+
     // [CTRL] Installe un module dans la chaine a la position donnee.
     // Le backend choisit le contexte adequat (CPU ou GPU) selon le
     // backend_type_id declare par le module, cable les pointeurs,
@@ -373,9 +438,6 @@ public:
     virtual Status process(const float* const* in,
                            float*              out,
                            int                 num_frames) noexcept = 0;
-
-    // [CTRL] Capabilities de la ressource de calcul.
-    virtual BackendCaps caps() const noexcept = 0;
 
     // [CTRL] Declenche la mesure de latence reelle sur N blocs de bruit blanc.
     // Hors RT uniquement. Ecrit last_latency_ et last_stats_ a la fin,
@@ -483,89 +545,24 @@ ODENISE_API std::vector<ModuleInfo> availableBackends();
 //  FRONTIERE DES MODULES DYNAMIQUES (dlopen / LoadLibrary)
 //
 //  Un module est un .so/.dll compile SEPAREMENT du coeur, eventuellement par
-//  un autre compilateur. On ne traverse donc cette frontiere qu'en C : un
-//  unique point d'entree extern "C" renvoie une table de pointeurs de
-//  fonctions. Derriere ces pointeurs, l'implementation reste du C++ normal.
+//  un autre compilateur (GCC/UCRT64 pour CPU, MSVC+nvcc pour CUDA).
+//
+//  Principe : odenise_module_entry(sample_rate, n_max) retourne un ModuleBase*.
+//  Pour ComputeBackend, l'objet implemente aussi BackendBase ; le loader
+//  le caste via dynamic_cast apres avoir lu info_c()->kind.
+//  Les structs POD (OdeniseModuleInfoC, OdeniseBackendCapsC, OdeniseTestResultC)
+//  sont declarees globalement avant namespace ns -- accessibles sans
+//  qualification depuis tout compilateur.
 //
 //  (Pour le chargement de odenise PAR l'ecosysteme gxinterface, une autre
-//   convention -- extern "C" renvoyant des types C++ -- sera utilisee
-//   separement ; elle n'est pas definie ici.)
-//
-//  Regles imposees par la frontiere binaire :
-//   - ABI : la table commence par 'abi_version', verifiee au chargement.
-//   - Exceptions : aucune ne franchit la frontiere. Tout est noexcept et
-//     renvoie un code ; le module convertit ses exceptions en interne.
-//   - Memoire : tout objet cree par le module est detruit par le module.
-//   - Types : seuls des POD / const char* traversent. Les chaines sont
-//     possedees par le module et valides tant qu'il est charge.
-//
-//  Extension C++ au-dela de la frontiere C :
-//   La vtable C expose un pointeur create_cpp() qui retourne un ModuleBase*
-//   (ou BackendBase* pour les backends). Une fois ce pointeur obtenu, le
-//   coeur appelle les methodes virtuelles C++ directement, sans passer par
-//   la vtable C. C'est la meme convention que gxinterface.
-//   Contrainte : module et coeur doivent partager le meme compilateur et la
-//   meme STL (garantie dans odenise : GCC/UCRT64 pour CPU, MSVC pour CUDA).
+//   convention sera utilisee separement ; elle n'est pas definie ici.)
 // ===========================================================================
+
 extern "C" {
 
-typedef struct {
-    int          id;
-    int          kind;            // valeur de ns::ModuleKind
-    const char*  name;
-    const char*  description;
-    int          needs_gpu;       // 0/1
-    int          backend_type_id; // ns::kBackendAny, kBackendCPU, kBackendCUDA, ...
-                                  // ou valeur libre pour un backend tiers (>99)
-} OdeniseModuleInfoC;
-
-typedef struct {
-    int          passed;          // 0/1
-    const char*  detail;
-} OdeniseTestResultC;
-
-// Buffers detenus par l'appelant (le coeur), valides le temps de l'appel.
-// Conserve pour la compatibilite avec les modules de la phase 1/2 et les
-// modules qui n'implementent pas encore ModuleBase.
-typedef struct {
-    const float* const* in;       // in[ch]
-    float*              out;      // sortie mono
-    int                 in_channels;
-    int                 num_frames;
-} OdeniseProcessCtx;
-
-typedef void* OdeniseModuleInstance;
-
-// Table de fonctions d'un module. Tout pointeur est noexcept cote module ;
-// les fonctions de traitement renvoient un int = valeur de ns::Status.
-//
-// Extension C++ : create_cpp retourne un ModuleBase* (ou BackendBase* pour
-// les backends de type ComputeBackend). Si non nul, le coeur l'utilise
-// directement pour la chaine de traitement. Si nul (anciens modules), le
-// coeur utilise le chemin process() de la phase 1/2.
-typedef struct {
-    int                  abi_version;   // DOIT valoir ns::kAbiVersion
-
-    OdeniseModuleInfoC   info;          // metadonnees (sans instance)
-
-    // --- chemin phase 1/2 (compatibilite) ---
-    OdeniseModuleInstance (*create)(int sample_rate, int n_max);
-    void                  (*destroy)(OdeniseModuleInstance self);
-    int  (*set_param)(OdeniseModuleInstance self, int param_id, float value);
-    int  (*process)(OdeniseModuleInstance self, OdeniseProcessCtx* ctx);
-    OdeniseTestResultC (*self_test)(void);
-
-    // --- extension C++ (phase 3+) ---
-    // Retourne un ModuleBase* (modules) ou BackendBase* (ComputeBackend).
-    // Nul si le module n'implemente pas encore cette interface.
-    // L'objet retourne est gere par le module (meme duree de vie que create()).
-    ns::ModuleBase*   (*create_module) (int sample_rate, int n_max);
-    ns::BackendBase*  (*create_backend)(int sample_rate, int n_max);
-
-} OdeniseModuleVTable;
-
-// Unique symbole exporte par chaque module. Le loader fait dlsym sur ce nom.
-typedef const OdeniseModuleVTable* (*OdeniseModuleEntryFn)(void);
+// Unique symbole exporte par chaque module (.so/.dll).
+// Le loader fait dlsym sur ce nom puis appelle entry(sample_rate, n_max).
+typedef ns::ModuleBase* (*OdeniseModuleEntryFn)(int sample_rate, int n_max);
 
 #define ODENISE_MODULE_ENTRY_SYMBOL "odenise_module_entry"
 
