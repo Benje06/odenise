@@ -1,5 +1,5 @@
 # ============================================================================
-#  src/libs/log/CMakeLists.txt -- libodenise_log : LogManager singleton.
+#  lib/log/CMakeLists.txt -- libodenise_log : LogManager singleton.
 #
 #  Bibliotheque partagee utilitaire, linkee par :
 #    - libodenise (coeur)

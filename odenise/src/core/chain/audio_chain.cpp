@@ -1,7 +1,7 @@
 // ============================================================================
 //  chain/audio_chain.cpp  --  Implementation de la chaine cablee.
 // ============================================================================
-#include "audio_chain.h"
+#include "chain/audio_chain.h"
 #include "tools/logger.h"
 
 #include <algorithm>
@@ -153,7 +153,7 @@ void AudioChain::recalculate_latency() {
         total += node.module->latency_samples();
     declared_latency_ = total;
     if (on_latency_changed)
-        on_latency_changed(declared_latency_);
+        on_latency_changed(on_latency_changed_user, declared_latency_);
 }
 
 // ---------------------------------------------------------------------------

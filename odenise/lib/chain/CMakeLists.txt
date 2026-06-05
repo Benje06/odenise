@@ -1,5 +1,5 @@
 # ============================================================================
-#  src/libs/chain/CMakeLists.txt -- libodenise_chain : AudioChain.
+#  lib/chain/CMakeLists.txt -- libodenise_chain : AudioChain.
 #
 #  Bibliotheque partagee utilitaire, linkee par :
 #    - libodenise (coeur)
@@ -34,7 +34,9 @@ target_include_directories(odenise_chain
         ${CMAKE_SOURCE_DIR}/src/core/tools)
 
 target_compile_features(odenise_chain PUBLIC cxx_std_20)
-target_compile_definitions(odenise_chain PRIVATE ODENISE_BUILD_LIBRARY=1)
+target_compile_definitions(odenise_chain PRIVATE
+    ODENISE_BUILD_LIBRARY=1
+    CHAIN_EXPORTS=1)
 
 # Depend de odenise_log pour LOG/LOG_ERR dans audio_chain.cpp.
 target_link_libraries(odenise_chain PUBLIC odenise_log)

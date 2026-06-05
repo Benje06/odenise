@@ -20,7 +20,6 @@
 
 #include <atomic>
 #include <cstddef>
-#include <functional>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -31,7 +30,7 @@
 #if defined(_WIN32) || defined(__MINGW32__)
     #ifdef CHAIN_EXPORTS
         #define CHAIN __declspec(dllexport)
-    #elif defined(LOGGER_IMPORTS)
+    #elif defined(CHAIN_IMPORTS)
         #define CHAIN __declspec(dllimport)
     #else
         #define CHAIN
@@ -96,7 +95,7 @@ struct ChainElement {
 //    chain.replace(backend, mod4, kind4, position4);
 //    chain.remove(kind, position);
 // ---------------------------------------------------------------------------
-class ODENISE_CHAIN_API AudioChain {
+class AudioChain {
 public:
     AudioChain() = default;
     ~AudioChain() = default;
@@ -114,44 +113,48 @@ public:
     // Recable les voisins, insere un noeud de transfert si la transition
     // de contexte l'exige (CPU->GPU ou GPU->CPU).
     // Retourne false si le module refuse l'installation (incompatibilite).
-    bool install(BackendBase*  backend,
-                 ModuleBase*   mod,
-                 ModuleKind    kind,
-                 int           position);
+    CHAIN bool install(BackendBase*  backend,
+                       ModuleBase*   mod,
+                       ModuleKind    kind,
+                       int           position);
 
     // Insere un module a la position donnee (decale les suivants).
-    bool insert(BackendBase*  backend,
-                ModuleBase*   mod,
-                ModuleKind    kind,
-                int           position);
+    CHAIN bool insert(BackendBase*  backend,
+                      ModuleBase*   mod,
+                      ModuleKind    kind,
+                      int           position);
 
     // Remplace le module a la position donnee.
-    bool replace(BackendBase* backend,
-                 ModuleBase*  mod,
-                 ModuleKind   kind,
-                 int          position);
+    CHAIN bool replace(BackendBase* backend,
+                       ModuleBase*  mod,
+                       ModuleKind   kind,
+                       int          position);
 
     // Retire le module a la position donnee et recable les voisins.
-    void remove(BackendBase* backend,
-                ModuleKind   kind,
-                int          position) noexcept;
+    CHAIN void remove(BackendBase* backend,
+                      ModuleKind   kind,
+                      int          position) noexcept;
 
     // -----------------------------------------------------------------------
     //  Execution RT -- appelee par le backend a chaque bloc.
     //  Iteration sur la liste plate active. Zero decision, zero allocation.
     // -----------------------------------------------------------------------
-    void process(int num_frames) noexcept;
+    CHAIN void process(int num_frames) noexcept;
 
     // -----------------------------------------------------------------------
     //  Latence -- calculee au cablage, lue hors RT.
     // -----------------------------------------------------------------------
 
     // Somme des latences declarees par tous les modules de la chaine.
-    int declared_latency_samples() const noexcept { return declared_latency_; }
+    CHAIN int declared_latency_samples() const noexcept { return declared_latency_; }
 
     // Callback declenche a chaque recablage avec la nouvelle latence declaree.
     // L'engine l'enregistre pour notifier l'hote audio (PDC).
-    std::function<void(int samples)> on_latency_changed;
+    // Callback declenche a chaque recablage avec la nouvelle latence declaree.
+    // L'engine l'enregistre pour notifier l'hote audio (PDC).
+    // Pointeur de fonction brut : pas de std::function (C4251 MSVC).
+    void (*on_latency_changed)(void* user, int samples) = nullptr;
+    void*  on_latency_changed_user                      = nullptr;
 
 private:
     // -----------------------------------------------------------------------
