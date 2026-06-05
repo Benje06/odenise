@@ -19,6 +19,13 @@
 # Utilise par tous les modules de ce CMakeLists.
 set(ODENISE_CORE_INTERFACES ${CMAKE_SOURCE_DIR}/src/core/interfaces)
 
+# Chemin vers src/core/ pour les headers internes (chain/, registry/, tools/).
+# Utilise uniquement par les modules qui incluent des headers internes du coeur
+# (ex: backend_cpu inclut chain/audio_chain.h).
+# Contrainte : ces modules doivent etre compiles avec le meme compilateur
+# que le coeur (GCC/UCRT64 pour CPU) -- jamais transmis a nvcc.
+set(ODENISE_CORE_INTERNAL ${CMAKE_SOURCE_DIR}/src/core)
+
 # --- Passthrough (suppression neutre, validation de la chaine) ---------------
 add_library(passthrough MODULE suppression/passthrough.cpp)
 set_target_properties(passthrough PROPERTIES
@@ -46,7 +53,9 @@ set_target_properties(backend_cpu PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${ODENISE_MODULE_OUTPUT_DIR}/backends"
     RUNTIME_OUTPUT_DIRECTORY "${ODENISE_MODULE_OUTPUT_DIR}/backends")
 
-target_include_directories(backend_cpu PRIVATE ${ODENISE_CORE_INTERFACES})
+target_include_directories(backend_cpu PRIVATE
+    ${ODENISE_CORE_INTERFACES}
+    ${ODENISE_CORE_INTERNAL})
 target_compile_features(backend_cpu PRIVATE cxx_std_20)
 
 if(MSVC)
