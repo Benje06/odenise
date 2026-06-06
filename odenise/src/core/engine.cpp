@@ -1,11 +1,17 @@
-// engine.cpp -- orchestration du moteur.
+// engine.cpp -- orchestration du moteur odenise.
 //
-// Phase 3 : suppression du double chemin legacy/C++.
-// L'engine utilise ModuleBase* et BackendBase* obtenus via le registry.
-// Seuls les modules selectionnes (backend actif + modules de la chaine audio)
-// sont charges. Les autres sont connus (available) mais pas en memoire.
-// La AudioChain est interne au backend : l'engine passe par
-// install_module() / uninstall_module().
+// Responsabilites :
+//   - Localiser le repertoire des modules (env ODENISE_MODULE_PATH ou chemin
+//     relatif a l'executable).
+//   - Piloter le ModuleRegistry : scan, chargement, liaison par couche
+//     (backend d'abord, modules de suppression ensuite), liberation en inverse.
+//   - Deleguer le traitement audio au backend actif via BackendBase::process().
+//   - Exposer latencyInfo() et processingStats() construits a la volee
+//     depuis l'etat du backend (pas de membre stocke dans EngineImpl).
+//
+// Le thread RT appartient a l'hote audio (JUCE, ALSA, ASIO...).
+// Engine::process() est appele par l'hote ; elle delègue au backend sans
+// aucune allocation ni synchronisation bloquante.
 #include "engine.h"
 #include "module_registry.h"
 
@@ -264,7 +270,7 @@ private:
         suppression_id_ = id;
 
         if (!backend_ || !backend_->install_module(suppression_, ModuleKind::Suppression, 0)) {
-            std::string msg_err = error("engine",
+            std::string msg_err = error(__func__,
                 _("suppression module chain install failed"),
                 _("id=") + std::to_string(id));
             LOG_ERR(msg_err);

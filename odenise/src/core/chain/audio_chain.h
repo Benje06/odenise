@@ -156,8 +156,6 @@ public:
 
     // Callback declenche a chaque recablage avec la nouvelle latence declaree.
     // L'engine l'enregistre pour notifier l'hote audio (PDC).
-    // Callback declenche a chaque recablage avec la nouvelle latence declaree.
-    // L'engine l'enregistre pour notifier l'hote audio (PDC).
     // Pointeur de fonction brut : pas de std::function (C4251 MSVC).
     void (*on_latency_changed)(void* user, int samples) = nullptr;
     void*  on_latency_changed_user                      = nullptr;

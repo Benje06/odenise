@@ -48,7 +48,8 @@ class Thread {
     protected:
         /* function to define in your class, is what the thread do */
         virtual bool Run() = 0;
-        virtual bool Run2() = 0;
+        // Run2 est optionnel : a surcharger uniquement si un second thread est necessaire.
+        virtual bool Run2() { return false; }
         /* internal start */
         virtual int S_Thread(void* (*f) (void*));
         /* thread start */

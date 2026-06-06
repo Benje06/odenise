@@ -302,7 +302,8 @@ struct ProcessingStats {
 //    [CTRL] engine charge backend et modules via le registre
 //    [CTRL] engine appelle BackendBase::install_module() pour chaque module
 //    [CTRL] BackendBase cable la chaine (pointeurs, transferts) -- une fois
-//    [RT]   engine appelle BackendBase::process() a chaque bloc
+//    [RT]   l'hote audio (JUCE, ALSA, ASIO...) appelle Engine::process() ;
+//           Engine::process() delègue au BackendBase::process() du backend actif
 //    [CTRL] engine appelle BackendBase::uninstall_module() au recablage
 // ===========================================================================
 

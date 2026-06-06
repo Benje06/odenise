@@ -94,8 +94,7 @@ void AudioChain::rebuild(BackendBase* backend) {
                 transfer.src     = prev.module->output_buf();
                 transfer.dst     = node.module->output_buf(); // sera set_input
                 transfer.bytes   = 0; // resolu par le backend a l'install
-                transfer.stream  = backend ? backend->caps_c()->is_gpu ?
-                                   nullptr : nullptr : nullptr; // stream CUDA
+                transfer.stream  = nullptr; // TODO phase 5 : cudaStream_t* fourni par le backend CUDA
                 flat.push_back(transfer);
                 std::string msg = _("audio_chain: inserted H2D transfer at position ");
                 msg += std::to_string(i);
