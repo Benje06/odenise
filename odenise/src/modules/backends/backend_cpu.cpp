@@ -247,7 +247,14 @@ public:
             return odenise::Status::Unsupported;
         return odenise::Status::Ok;
     }
-
+    // -----------------------------------------------------------------------
+    //  setAudioIO -- set les entrée/sortie audio
+    // -----------------------------------------------------------------------
+    void setAudioIO(TrackIO io) override {
+        P_Thread();
+        io_      = io;
+        R_Thread();
+    }
     // -----------------------------------------------------------------------
     //  measure -- mesure de latence et de charge CPU hors RT.
     // -----------------------------------------------------------------------

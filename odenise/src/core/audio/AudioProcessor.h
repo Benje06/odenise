@@ -8,7 +8,6 @@
 //  Cycle de vie :
 //    [CTRL] prepare(sample_rate, block_size)
 //              -> reconfigure engine + backend
-//              -> cree TrackIO depuis les buffers de l'interface selectionnee
 //    [CTRL] setAudioIO(io)
 //              -> cable les pointeurs audio sur le backend (hors RT)
 //    [RT]   la couche audio appelle backend->process() directement
@@ -16,9 +15,14 @@
 //    [CTRL] release()
 //              -> suspend le backend
 //
+//  Configuration de la chaine audio :
+//    AudioEditor delegue a AudioProcessor qui appelle BackendBase.
+//    AudioEditor ne connait pas BackendBase.
+//
 //  Relations :
-//    AudioProcessor <-> Engine    (init, reconfigure, monitoring)
-//    AudioProcessor <-> BackendBase (setAudioIO, prepare/release)
+//    AudioProcessor <-> Engine       (init, reconfigure, monitoring)
+//    AudioProcessor <-> BackendBase  (setAudioIO, prepare/release,
+//                                     configuration chaine)
 //    AudioProcessor n'est PAS dans la boucle RT
 // ============================================================================
 #pragma once
@@ -32,7 +36,8 @@
 namespace odenise::audio {
 
 // ---------------------------------------------------------------------------
-//  AudioProcessor -- logique de preparation et de cablage de la chaine audio.
+//  AudioProcessor -- logique de preparation, cablage et configuration
+//  de la chaine audio.
 //
 //  Possede l'engine. Obtient un pointeur non-owning sur le backend actif
 //  via engine apres chaque reconfigure.
@@ -44,7 +49,6 @@ public:
     // -----------------------------------------------------------------------
 
     // Cree l'engine avec les caps par defaut.
-    // Le backend et les modules sont charges au premier prepare().
     AudioProcessor();
 
     // Cree l'engine avec des caps explicites.
@@ -75,6 +79,25 @@ public:
     void release();
 
     // -----------------------------------------------------------------------
+    //  Configuration de la chaine audio
+    //  Appele par AudioEditor -- delegue a BackendBase.
+    // -----------------------------------------------------------------------
+
+    // Installe un module a la position donnee dans la chaine.
+    // Retourne false si le backend n'est pas disponible ou si l'installation
+    // echoue.
+    bool installModule(ModuleBase* mod, ModuleKind kind, int position);
+
+    // Insere un module a la position donnee (decale les suivants).
+    bool insertModule(ModuleBase* mod, ModuleKind kind, int position);
+
+    // Remplace le module a la position donnee.
+    bool replaceModule(ModuleBase* mod, ModuleKind kind, int position);
+
+    // Retire le module a la position donnee.
+    void removeModule(int position);
+
+    // -----------------------------------------------------------------------
     //  Acces a l'engine (pour AudioEditor et le wrapper JUCE)
     // -----------------------------------------------------------------------
     Engine* engine() const noexcept { return engine_.get(); }
@@ -86,7 +109,7 @@ public:
 
 private:
     std::unique_ptr<Engine> engine_;
-    BackendBase*            backend_ = nullptr;  // non-owning, possede par le registry
+    BackendBase*            backend_     = nullptr;  // non-owning, possede par le registry
     int                     sample_rate_ = 0;
     int                     block_size_  = 0;
 };

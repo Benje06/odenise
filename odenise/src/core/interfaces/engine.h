@@ -439,6 +439,11 @@ public:
     // Peut reallouer -- jamais appele depuis le RT.
     virtual void reconfigure(const EngineCaps& caps, const RuntimeConfig& cfg) = 0;
 
+    // [CTRL] Cable les pointeurs audio de l'interface sur le backend.
+    // Appele par AudioProcessor apres prepare(). Stocke in/out/n_frames
+    // pour Run(). Hors RT uniquement.
+    virtual void setAudioIO(TrackIO io) = 0;
+
     // [RT] Traitement d'un bloc audio. Le backend itere sur la liste plate
     // cablee : modules et noeuds de transfert, dans l'ordre, via pointeurs
     // de fonctions pre-resolus. Zéro decision, zéro allocation.
@@ -479,6 +484,7 @@ protected:
     LatencyInfo             last_latency_;
     ProcessingStats         last_stats_;
     std::atomic<bool>       measure_ready_{false};
+    TrackIO                 io_;
 };
 
 // ===========================================================================
