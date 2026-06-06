@@ -53,7 +53,7 @@ install(TARGETS passthrough
         RUNTIME DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/suppression)
 
 # --- Backend CPU (calcul de repli / fallback) --------------------------------
-# Linke contre odenise_log (LogManager singleton) et odenise_chain (AudioChain).
+# Linke contre odenise_log (LogManager singleton) et odenise_chain (AudioChain) odenise_thread.
 # Le module ne linke PAS contre odenise_core (frontiere C : dlopen uniquement).
 add_library(backend_cpu MODULE backends/backend_cpu.cpp)
 set_target_properties(backend_cpu PROPERTIES
@@ -64,8 +64,8 @@ set_target_properties(backend_cpu PROPERTIES
 target_include_directories(backend_cpu PRIVATE
     ${ODENISE_CORE_INTERFACES}
     ${ODENISE_CORE_INTERNAL})
-target_compile_features(backend_cpu PRIVATE cxx_std_20)
-target_link_libraries(backend_cpu PRIVATE odenise_log odenise_chain)
+
+target_link_libraries(backend_cpu PRIVATE odenise_log odenise_chain odenise_thread)
 target_compile_features(backend_cpu PRIVATE cxx_std_20)
 
 if(MSVC)

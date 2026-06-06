@@ -76,10 +76,25 @@ int Thread::J_Thread() {
     return 0;
 }
 
+int Thread::J_Thread2() {
+    LOG(LOG_IN());
+    pthread_join(thread2, nullptr);
+    LOG(LOG_OUT());
+    return 0;
+}
+
 int Thread::T_Thread() {
     LOG(LOG_IN());
     pthread_cancel(thread);
     J_Thread();
+    LOG(LOG_OUT());
+    return 0;
+}
+
+int Thread::T_Thread2() {
+    LOG(LOG_IN());
+    pthread_cancel(thread2);
+    J_Thread2();
     LOG(LOG_OUT());
     return 0;
 }
@@ -193,12 +208,28 @@ int Thread::J_Thread() {
     return 0;
 }
 
-/* T_Thread : signale l'arrêt à thread_ puis joint.
- * Run() doit consulter stop_requested() pour terminer proprement. */
+int Thread::J_Thread2() {
+    LOG(std::string(" -> ") + __func__);
+    if (thread2_.joinable())
+        thread2_.join();
+    LOG(std::string("<-  ") + __func__);
+    return 0;
+}
+
+/* T_Thread : signale l'arrêt à thread_ puis joint. */
 int Thread::T_Thread() {
     LOG(std::string(" -> ") + __func__);
     stop_.store(true, std::memory_order_release);
     J_Thread();
+    LOG(std::string("<-  ") + __func__);
+    return 0;
+}
+
+/* T_Thread2 : signale l'arrêt à thread2_ puis joint. */
+int Thread::T_Thread2() {
+    LOG(std::string(" -> ") + __func__);
+    stop2_.store(true, std::memory_order_release);
+    J_Thread2();
     LOG(std::string("<-  ") + __func__);
     return 0;
 }

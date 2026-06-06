@@ -21,7 +21,7 @@ set_target_properties(odenise_thread PROPERTIES
     CXX_VISIBILITY_PRESET     hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
-# PUBLIC : expose logger.h (et par transitivite common.h, debug.h) aux
+# PUBLIC : expose gxthread.h (et par transitivite common.h, debug.h) aux
 # consommateurs. BUILD_INTERFACE pour le build, INSTALL_INTERFACE apres install.
 target_include_directories(odenise_thread
     PUBLIC
@@ -35,6 +35,8 @@ target_compile_features(odenise_thread PUBLIC cxx_std_20)
 target_compile_definitions(odenise_thread PRIVATE
     THREAD_EXPORTS=1
     ODENISE_BUILD_LIBRARY=1)
+
+target_link_libraries(odenise_thread PUBLIC odenise_log)
 
 if(MSVC)
     target_compile_options(odenise_thread PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4>)

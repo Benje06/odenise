@@ -54,9 +54,9 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(odenise_core PUBLIC ${CMAKE_DL_LIBS})
 endif()
 
-# Libs utilitaires partagees : LogManager singleton et AudioChain.
+# Libs utilitaires partagees : LogManager singleton et AudioChain, gxthread.
 # PUBLIC : transitent vers les consommateurs de odenise_core (tests, plugin).
-target_link_libraries(odenise_core PUBLIC odenise_log odenise_chain)
+target_link_libraries(odenise_core PUBLIC odenise_log odenise_chain odenise_thread)
 
 # Avertissements stricts, C++ uniquement (pas vers nvcc)
 if(MSVC)

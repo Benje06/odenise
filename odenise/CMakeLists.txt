@@ -119,7 +119,7 @@ endif()
 
 # ---------------------------------------------------------------------------
 #  Sous-repertoires
-#  Ordre : libs utilitaires d'abord (odenise_log, odenise_chain),
+#  Ordre : libs utilitaires d'abord (odenise_log, odenise_chain, odenise_thread),
 #  puis le coeur (odenise_core) qui les consomme,
 #  puis les modules et les tests.
 # ---------------------------------------------------------------------------

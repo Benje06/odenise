@@ -36,17 +36,46 @@
  *     T_Thread() pose stop_ = true puis joint -- Run() doit consulter
  *     stop_ pour terminer (pas d'équivalent portable à pthread_cancel).
  *
+ * Pause coopérative (commune aux deux implémentations) :
+ *   P_Thread() / P_Thread2() : pose pause_=true, attend paused_=true (hors RT).
+ *   R_Thread() / R_Thread2() : pose pause_=false, Run() reprend.
+ *   Run() doit implémenter :
+ *     if (pause_requested()) {
+ *         paused_.store(true,  memory_order_release);
+ *         while (pause_requested()) { std::this_thread::yield(); }
+ *         paused_.store(false, memory_order_release);
+ *     }
+ *
  */
 #ifndef GXTHREAD_H
 #define GXTHREAD_H
-
+// ---------------------------------------------------------------------------
+//  Visibilite des symboles de libodenise_thread.
+//  ODENISE_THREAD_API : exporte depuis la lib, importe chez le consommateur.
+//  Meme patron que ODENISE_API / THREAD dans le reste du projet.
+// ---------------------------------------------------------------------------
+#if defined(_WIN32) || defined(__MINGW32__)
+    #ifdef THREAD_EXPORTS
+        #define THREAD __declspec(dllexport)
+    #elif defined(THREAD_IMPORTS)
+        #define THREAD __declspec(dllimport)
+    #else
+        #define THREAD
+    #endif
+#else
+    #ifdef THREAD_EXPORTS
+        #define THREAD __attribute__((visibility("default")))
+    #else
+        #define THREAD
+    #endif
+#endif
 #include "common.h"
+#include <atomic>
 
 #ifndef _MSC_VER
 /* -------------------------------------------------------------------------
  * Implémentation pthread (Linux / GCC / UCRT64-MinGW)
  * ------------------------------------------------------------------------- */
-#include <atomic>
 #include <pthread.h>
 
 class Thread {
@@ -54,21 +83,18 @@ private:
     int       err;
     pthread_t thread;
     pthread_t thread2;
-    /* thread loop function */
+    /* thread loop functions */
     static void* T_Loop (void*);
     static void* T_Loop2(void*);
-    /* Pause coopérative -- zéro mutex dans Run() (RT-safe).
-     * pause_  : commande  (posée par P_Thread, lue par Run dans la boucle RT).
-     * paused_ : confirmation (posée par Run quand il entre en pause,
-     *           lue par P_Thread pour attendre la suspension effective). */
+    /* Commandes de pause -- posées par P_Thread()/P_Thread2() hors RT,
+     * lues par Run()/Run2() dans la boucle (RT-safe, zéro mutex). */
     std::atomic<bool> pause_ {false};
-    std::atomic<bool> pause2_ {false};
+    std::atomic<bool> pause2_{false};
 protected:
     /* Confirmations de pause -- écrites par Run()/Run2() quand ils entrent
      * et sortent de pause. Lues par P_Thread()/P_Thread2() hors RT. */
     std::atomic<bool> paused_ {false};
     std::atomic<bool> paused2_{false};
-protected:
     /* function to define in your class, is what the thread do */
     virtual bool Run()  = 0;
     // Run2 est optionnel : à surcharger uniquement si un second thread est nécessaire.
@@ -79,7 +105,9 @@ protected:
     int S_Thread();
     int S_Thread2();
     int J_Thread();
+    int J_Thread2();
     int T_Thread();
+    int T_Thread2();
     int P_Thread();   // pause  thread  (attend confirmation de suspension)
     int R_Thread();   // resume thread
     int P_Thread2();  // pause  thread2
@@ -87,9 +115,7 @@ protected:
     /* internal constructor */
     Thread(void* (*f)(void*)) { S_Thread(f); }
 public:
-    /* Lecture des flags pause/stop depuis Run() -- RT-safe (load acquire,
-     * pas de mutex). Run() consulte pause_requested() en début de boucle ;
-     * si true, pose paused_=true, dort, repose paused_=false à la reprise. */
+    /* Lecture des flags pause depuis Run() -- RT-safe (load acquire, zéro mutex). */
     bool pause_requested()  const noexcept { return pause_ .load(std::memory_order_acquire); }
     bool pause2_requested() const noexcept { return pause2_.load(std::memory_order_acquire); }
     Thread();
@@ -99,11 +125,11 @@ public:
 #else /* _MSC_VER */
 /* -------------------------------------------------------------------------
  * Implémentation std::thread (Windows / MSVC)
- * T_Thread() : pose stop_ = true puis joint thread_.
- * Run() doit consulter stop_ pour terminer proprement (pas de pthread_cancel
- * sous MSVC). Run2() / stop2_ suivent le même modèle.
+ * T_Thread()  : pose stop_  = true puis joint thread_.
+ * T_Thread2() : pose stop2_ = true puis joint thread2_.
+ * Run()/Run2() doivent consulter stop_requested()/stop2_requested() pour
+ * terminer proprement (pas de pthread_cancel sous MSVC).
  * ------------------------------------------------------------------------- */
-#include <atomic>
 #include <thread>
 
 class Thread {
@@ -112,12 +138,10 @@ private:
     std::thread          thread2_;
     std::atomic<bool>    stop_ {false};
     std::atomic<bool>    stop2_{false};
-    /* Pause coopérative -- zéro mutex dans Run() (RT-safe).
-     * pause_  : commande  (posée par P_Thread, lue par Run dans la boucle RT).
-     * paused_ : confirmation (posée par Run quand il entre en pause,
-     *           lue par P_Thread pour attendre la suspension effective). */
+    /* Commandes de pause -- posées par P_Thread()/P_Thread2() hors RT,
+     * lues par Run()/Run2() dans la boucle (RT-safe, zéro mutex). */
     std::atomic<bool>    pause_ {false};
-    std::atomic<bool>    pause2_ {false};
+    std::atomic<bool>    pause2_{false};
     /* fonction arbitraire passée au constructeur interne (peut être nullptr).
      * Sémantique identique à pthread_create(..., f, this) :
      * f reçoit this comme void*, son retour est ignoré. */
@@ -129,35 +153,36 @@ protected:
      * et sortent de pause. Lues par P_Thread()/P_Thread2() hors RT. */
     std::atomic<bool>    paused_ {false};
     std::atomic<bool>    paused2_{false};
-protected:
     /* function to define in your class, is what the thread do */
-    virtual bool Run()  = 0;
+    THREAD virtual bool Run()  = 0;
     // Run2 est optionnel : à surcharger uniquement si un second thread est nécessaire.
-    virtual bool Run2() = 0;
+    THREAD virtual bool Run2() = 0;
     /* thread start / stop / join / pause / resume */
-    int S_Thread();
-    int S_Thread2();
-    int J_Thread();
-    int T_Thread();
-    int P_Thread();   // pause  thread  (attend confirmation de suspension)
-    int R_Thread();   // resume thread
-    int P_Thread2();  // pause  thread2
-    int R_Thread2();  // resume thread2
+    THREAD int S_Thread();
+    THREAD int S_Thread2();
+    THREAD int J_Thread();
+    THREAD int J_Thread2();
+    THREAD int T_Thread();
+    THREAD int T_Thread2();
+    THREAD int P_Thread();   // pause  thread  (attend confirmation de suspension)
+    THREAD int R_Thread();   // resume thread
+    THREAD int P_Thread2();  // pause  thread2
+    THREAD int R_Thread2();  // resume thread2
     /* internal constructor : lance f(this) dans thread_, comme pthread_create.
      * T_Thread() pose stop_ = true puis joint -- f doit consulter
      * stop_requested() pour terminer proprement. */
-    Thread(void* (*f)(void*)) : custom_fn_(f) { S_Thread_fn(); }
+    THREAD Thread(void* (*f)(void*)) : custom_fn_(f) { S_Thread_fn(); }
 public:
-    /* Lecture des flags depuis Run() -- RT-safe (load acquire, pas de mutex).
+    /* Lecture des flags depuis Run() -- RT-safe (load acquire, zéro mutex).
      * stop_requested()  : Run() doit retourner false pour terminer.
      * pause_requested() : Run() doit entrer en pause (pose paused_=true,
-     *                     dort, repose paused_=false à la reprise). */
-    bool stop_requested()   const noexcept { return stop_  .load(std::memory_order_acquire); }
-    bool stop2_requested()  const noexcept { return stop2_ .load(std::memory_order_acquire); }
-    bool pause_requested()  const noexcept { return pause_ .load(std::memory_order_acquire); }
-    bool pause2_requested() const noexcept { return pause2_.load(std::memory_order_acquire); }
-    Thread();
-    ~Thread();
+     *                     yield en boucle, repose paused_=false à la reprise). */
+    THREAD bool stop_requested()   const noexcept { return stop_  .load(std::memory_order_acquire); }
+    THREAD bool stop2_requested()  const noexcept { return stop2_ .load(std::memory_order_acquire); }
+    THREAD bool pause_requested()  const noexcept { return pause_ .load(std::memory_order_acquire); }
+    THREAD bool pause2_requested() const noexcept { return pause2_.load(std::memory_order_acquire); }
+    THREAD Thread();
+    THREAD ~Thread();
 };
 
 #endif /* _MSC_VER */

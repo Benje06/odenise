@@ -82,8 +82,7 @@ public:
     ~CpuBackendImpl() override {
         // Arrete les threads avant destruction.
         T_Thread();
-        T_Thread();  // T_Thread ne cible que thread_ ; appel symétrique pour thread2_
-        // TODO : ajouter T_Thread2() quand S_Thread2() sera lancé dans reconfigure.
+        T_Thread2();
     }
 
     // -----------------------------------------------------------------------
@@ -228,7 +227,7 @@ public:
     }
 
     void uninstall_module(ns::ModuleKind kind, int position) noexcept override {
-        chain_.remove(this, kind, position);
+        chain_.remove(this, position);
         first_module_ = nullptr;
         last_module_  = nullptr;
         nodes_empty_  = true;
