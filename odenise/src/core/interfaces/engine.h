@@ -12,6 +12,7 @@
 // ============================================================================
 #pragma once
 #include "logger.h"
+#include "gxthread.h"
 #include <cstdlib>
 #include <filesystem>
 #include <atomic>
@@ -302,8 +303,7 @@ struct ProcessingStats {
 //    [CTRL] engine charge backend et modules via le registre
 //    [CTRL] engine appelle BackendBase::install_module() pour chaque module
 //    [CTRL] BackendBase cable la chaine (pointeurs, transferts) -- une fois
-//    [RT]   l'hote audio (JUCE, ALSA, ASIO...) appelle Engine::process() ;
-//           Engine::process() delègue au BackendBase::process() du backend actif
+//    [RT]   engine appelle BackendBase::process() a chaque bloc
 //    [CTRL] engine appelle BackendBase::uninstall_module() au recablage
 // ===========================================================================
 
@@ -396,8 +396,12 @@ public:
 //  odenise_module_entry(). Il implemente BackendBase en plus de la vtable C.
 //  Il possede les contextes de calcul (CPU pool ou CUDA stream), les buffers
 //  de transfert pre-alloues, et la liste plate des elements de la chaine.
+//
+//  Herite de Thread : Run() et Run2() sont virtuelles pures -- le backend
+//  concret doit les implementer pour definir le comportement de ses threads
+//  de traitement (ex. boucle RT pour backend_cpu).
 // ---------------------------------------------------------------------------
-class BackendBase {
+class BackendBase : public Thread {
 public:
     virtual ~BackendBase() = default;
 
@@ -457,6 +461,18 @@ public:
     const LatencyInfo&     last_latency_info()     const noexcept { return last_latency_; }
     const ProcessingStats& last_processing_stats()  const noexcept { return last_stats_; }
 
+    // [CTRL] Callbacks enregistres par l'engine pour recevoir les mesures.
+    // Declenchés par le backend hors RT :
+    //   on_latency_changed : au cablage, pousse declared_samples + declared_ms.
+    //   on_stats_updated   : apres mesure, pousse ProcessingStats + measured_*.
+    // Pointeurs bruts : pas de std::function (C4251 MSVC).
+    // Passer nullptr pour desactiver.
+    void (*on_latency_changed)(void* user, int declared_samples) noexcept = nullptr;
+    void (*on_stats_updated)  (void* user,
+                                const ProcessingStats& stats,
+                                int measured_samples) noexcept             = nullptr;
+    void* callback_user = nullptr;  // contexte commun aux deux callbacks
+
 protected:
     // Ecrit par measure() hors RT, lu par l'engine/UI hors RT via les
     // accesseurs publics. Jamais touche par process() -- zéro impact RT.
@@ -486,12 +502,6 @@ public:
     // [CTRL] capabilities du backend reellement actif (GTX vs RTX, VRAM...).
     virtual BackendCaps backendCaps() const = 0;
 
-    // --- traitement temps reel ------------------------------------------
-    // [RT]  traite les pistes fournies. Chaque piste route sur son stream.
-    //       Non bloquant : aucun malloc, aucune synchro device imposee.
-    virtual Status process(std::span<const TrackIO> tracks,
-                           int num_frames) noexcept = 0;
-
     // --- parametres "a chaud" -------------------------------------------
     // [RT]
     virtual Status setParam(ParamId id, float value) noexcept = 0;
@@ -520,9 +530,11 @@ public:
 
     // --- mesures de performance -----------------------------------------
     // [CTRL] latence declaree + mesuree de la chaine courante.
-    virtual LatencyInfo    latencyInfo()    const = 0;
+    // Ref sur le membre interne mis a jour par callback depuis le backend.
+    virtual const LatencyInfo&     latencyInfo()     const noexcept = 0;
     // [CTRL] stats de traitement (min/max/mean/budget/load).
-    virtual ProcessingStats processingStats() const = 0;
+    // Ref sur le membre interne mis a jour par callback depuis le backend.
+    virtual const ProcessingStats& processingStats() const noexcept = 0;
 
     // --- remontee de metriques / spectres -------------------------------
     // [CTRL] copies coherentes des snapshots publies par le thread audio.

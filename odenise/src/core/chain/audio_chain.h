@@ -95,7 +95,7 @@ struct ChainElement {
 //    // hors RT -- recablage a chaud
 //    chain.insert(backend, mod3, kind3, position3);
 //    chain.replace(backend, mod4, kind4, position4);
-//    chain.remove(kind, position);
+//    chain.remove(backend, position);
 // ---------------------------------------------------------------------------
 class AudioChain {
 public:
@@ -137,9 +137,7 @@ public:
                        int             position);
 
     // Retire le module a la position donnee et recable les voisins.
-    CHAIN void remove(BackendBase* backend,
-                      ModuleKind   kind,
-                      int          position) noexcept;
+    CHAIN void remove(BackendBase* backend, int position) noexcept;
 
     // -----------------------------------------------------------------------
     //  Execution RT -- appelee par le backend a chaque bloc.
@@ -154,13 +152,13 @@ public:
     // Somme des latences declarees par tous les modules de la chaine.
     CHAIN int declared_latency_samples() const noexcept { return declared_latency_; }
 
-    // [CTRL] Enregistre le callback de changement de latence.
-    // Declenche a chaque recablage avec la nouvelle latence declaree.
+    // Callback declenche a chaque recablage avec la nouvelle latence declaree.
+    // L'engine l'enregistre pour notifier l'hote audio (PDC).
+    // Callback declenche a chaque recablage avec la nouvelle latence declaree.
     // L'engine l'enregistre pour notifier l'hote audio (PDC).
     // Pointeur de fonction brut : pas de std::function (C4251 MSVC).
-    // Passer fn=nullptr pour desactiver. Jamais appele depuis le RT.
-    CHAIN void set_latency_callback(void (*fn)(void*, int) noexcept,
-                                    void* user) noexcept;
+    void (*on_latency_changed)(void* user, int samples) = nullptr;
+    void*  on_latency_changed_user                      = nullptr;
 
 private:
     // -----------------------------------------------------------------------
@@ -207,11 +205,6 @@ private:
 
     // Latence declaree totale (sommee au cablage).
     int declared_latency_ = 0;
-
-    // Callback latence -- ecrit par set_latency_callback() hors RT,
-    // lu par recalculate_latency() hors RT. Jamais touche en RT.
-    void (*on_latency_changed_)(void*, int) noexcept = nullptr;
-    void*  on_latency_changed_user_                  = nullptr;
 };
 
 } // namespace ns::chain

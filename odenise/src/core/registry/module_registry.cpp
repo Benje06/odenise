@@ -358,10 +358,19 @@ ModuleBase* ModuleRegistry::find_module(ModuleKind kind, int id) const {
 }
 
 BackendBase* ModuleRegistry::find_backend(int id) const {
-    for (const auto& l : loaded_)
-        if (l.info.kind == ModuleKind::ComputeBackend && l.info.id == id)
-            return l.backend;
-    return nullptr;
+    const LoadedModule* lm = find_loaded(ModuleKind::ComputeBackend, id);
+    return lm ? lm->backend : nullptr;
+}
+
+// ---------------------------------------------------------------------------
+//  first_available_id -- retourne l'id du premier module disponible d'un kind.
+//  Sans allocation. Retourne -1 si aucun module de ce kind n'est disponible.
+// ---------------------------------------------------------------------------
+int ModuleRegistry::first_available_id(ModuleKind kind) const noexcept {
+    for (const auto& a : available_)
+        if (a.info.kind == kind)
+            return a.info.id;
+    return -1;
 }
 
 // ---------------------------------------------------------------------------

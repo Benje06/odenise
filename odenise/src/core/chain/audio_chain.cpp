@@ -66,6 +66,8 @@ void AudioChain::rebuild(BackendBase* backend) {
     // Index de la liste inactive (celle que le RT ne lit pas actuellement).
     const int inactive = 1 - active_.load(std::memory_order_acquire);
     auto& flat = chain_[inactive];
+    // clear() sans shrink_to_fit : conserve la capacite allouee du buffer
+    // inactif pour eviter toute reallocation au prochain rebuild. Voulu.
     flat.clear();
 
     if (nodes_.empty()) {
@@ -148,18 +150,8 @@ void AudioChain::recalculate_latency() {
     for (const auto& node : nodes_)
         total += node.module->latency_samples();
     declared_latency_ = total;
-    if (on_latency_changed_)
-        on_latency_changed_(on_latency_changed_user_, declared_latency_);
-}
-
-// ---------------------------------------------------------------------------
-//  set_latency_callback -- enregistre le callback de changement de latence.
-//  [CTRL] Hors RT uniquement.
-// ---------------------------------------------------------------------------
-void AudioChain::set_latency_callback(void (*fn)(void*, int) noexcept,
-                                      void* user) noexcept {
-    on_latency_changed_      = fn;
-    on_latency_changed_user_ = user;
+    if (on_latency_changed)
+        on_latency_changed(on_latency_changed_user, declared_latency_);
 }
 
 // ---------------------------------------------------------------------------
@@ -243,9 +235,7 @@ bool AudioChain::replace(BackendBase*    backend,
 // ---------------------------------------------------------------------------
 //  remove -- retire le module a la position donnee.
 // ---------------------------------------------------------------------------
-void AudioChain::remove(BackendBase* backend,
-                        ModuleKind   /*kind*/,
-                        int          position) noexcept {
+void AudioChain::remove(BackendBase* backend, int position) noexcept {
     auto it = std::find_if(nodes_.begin(), nodes_.end(),
         [position](const ChainNode& n) { return n.position == position; });
 

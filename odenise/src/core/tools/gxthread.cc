@@ -33,35 +33,39 @@
  */
 #include "gxthread.h"
 
-Thread::Thread() {} ;
-Thread::~Thread() {} ;
+/* ============================================================================
+ * Implémentation pthread (Linux / GCC / UCRT64-MinGW)
+ * ========================================================================== */
+#ifndef _MSC_VER
 
-void* Thread::T_Loop(void * thread) {
-    Thread * iThread = (Thread *)thread;
-    while(iThread->Run()){};
-    return 0;
-};
+Thread::Thread()  {}
+Thread::~Thread() {}
 
-void* Thread::T_Loop2(void * thread) {
-    Thread * iThread = (Thread *)thread;
-    while(iThread->Run2()){};
-    return 0;
-};
+void* Thread::T_Loop(void* thread) {
+    Thread* iThread = static_cast<Thread*>(thread);
+    while (iThread->Run()) {}
+    return nullptr;
+}
 
-int Thread::S_Thread(void* (*f) (void*)) {
-    if ( (err = pthread_create( &thread, nullptr, f, (void *)this)) ){
+void* Thread::T_Loop2(void* thread) {
+    Thread* iThread = static_cast<Thread*>(thread);
+    while (iThread->Run2()) {}
+    return nullptr;
+}
+
+int Thread::S_Thread(void* (*f)(void*)) {
+    if ((err = pthread_create(&thread, nullptr, f, static_cast<void*>(this)))) {
         std::string msg_err = error(__func__,
             _("cannot create thread"),
             std::to_string(err));
         LOG_ERR(msg_err);
         return err;
-    } else {
-        LOG("Thread: start");
     }
+    LOG("Thread: start");
     return 0;
 }
 
-int Thread::S_Thread() { return S_Thread(&T_Loop); }
+int Thread::S_Thread()  { return S_Thread(&T_Loop);  }
 int Thread::S_Thread2() { return S_Thread(&T_Loop2); }
 
 int Thread::J_Thread() {
@@ -78,3 +82,89 @@ int Thread::T_Thread() {
     LOG(LOG_OUT());
     return 0;
 }
+
+#else /* _MSC_VER */
+/* ============================================================================
+ * Implémentation std::thread (Windows / MSVC)
+ *
+ * T_Thread() : signale l'arrêt via stop_ (store release) puis joint thread_.
+ * Run() doit consulter stop_requested() pour terminer -- pas de pthread_cancel
+ * sous MSVC. Run2() / stop2_ suivent le même modèle.
+ * ========================================================================== */
+
+Thread::Thread()  {}
+Thread::~Thread() {}
+
+/* S_Thread_fn -- lance custom_fn_(this) dans thread_.
+ * Sémantique identique à pthread_create(..., custom_fn_, this) :
+ * la fonction reçoit this comme void*, son retour void* est ignoré. */
+int Thread::S_Thread_fn() {
+    try {
+        stop_.store(false, std::memory_order_release);
+        thread_ = std::thread([this] {
+            custom_fn_(static_cast<void*>(this));
+        });
+        LOG("Thread: start (custom fn)");
+    } catch (const std::exception& e) {
+        std::string msg_err = error(__func__,
+            _("cannot create thread (custom fn)"),
+            e.what());
+        LOG_ERR(msg_err);
+        return 1;
+    }
+    return 0;
+}
+
+int Thread::S_Thread() {
+    try {
+        stop_.store(false, std::memory_order_release);
+        thread_ = std::thread([this] {
+            while (Run()) {}
+        });
+        LOG("Thread: start");
+    } catch (const std::exception& e) {
+        std::string msg_err = error(__func__,
+            _("cannot create thread"),
+            e.what());
+        LOG_ERR(msg_err);
+        return 1;
+    }
+    return 0;
+}
+
+int Thread::S_Thread2() {
+    try {
+        stop2_.store(false, std::memory_order_release);
+        thread2_ = std::thread([this] {
+            while (Run2()) {}
+        });
+        LOG("Thread2: start");
+    } catch (const std::exception& e) {
+        std::string msg_err = error(__func__,
+            _("cannot create thread2"),
+            e.what());
+        LOG_ERR(msg_err);
+        return 1;
+    }
+    return 0;
+}
+
+int Thread::J_Thread() {
+    LOG(std::string(" -> ") + __func__);
+    if (thread_.joinable())
+        thread_.join();
+    LOG(std::string("<-  ") + __func__);
+    return 0;
+}
+
+/* T_Thread : signale l'arrêt à thread_ puis joint.
+ * Run() doit consulter stop_requested() pour terminer proprement. */
+int Thread::T_Thread() {
+    LOG(std::string(" -> ") + __func__);
+    stop_.store(true, std::memory_order_release);
+    J_Thread();
+    LOG(std::string("<-  ") + __func__);
+    return 0;
+}
+
+#endif /* _MSC_VER */

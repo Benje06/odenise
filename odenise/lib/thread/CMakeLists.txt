@@ -14,7 +14,7 @@
 add_library(odenise_thread SHARED
     ${CMAKE_SOURCE_DIR}/src/core/tools/gxthread.cc)
 
-set_target_properties(odenise_log PROPERTIES
+set_target_properties(odenise_thread PROPERTIES
     OUTPUT_NAME               odenise_thread
     VERSION                   ${PROJECT_VERSION}
     SOVERSION                 ${PROJECT_VERSION_MAJOR}
@@ -27,7 +27,9 @@ target_include_directories(odenise_thread
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core>
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/tools>
-        $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>)
+        $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/core/tools)
 
 target_compile_features(odenise_thread PUBLIC cxx_std_20)
 target_compile_definitions(odenise_thread PRIVATE

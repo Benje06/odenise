@@ -100,6 +100,10 @@ public:
     // Modules actuellement charges (pour l'engine : ce qui est actif).
     std::vector<ModuleInfo> list_loaded(ModuleKind kind) const;
 
+    // Retourne l'id du premier module disponible d'un kind, sans allocation.
+    // Retourne -1 si aucun module de ce kind n'est disponible.
+    int first_available_id(ModuleKind kind) const noexcept;
+
     // -----------------------------------------------------------------------
     //  Self-test d'un module disponible.
     //  Charge temporairement si pas deja charge, execute le test, decharge.
