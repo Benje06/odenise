@@ -11,7 +11,7 @@
 //    - set_input(src): stocke input_.
 //    - process(n)    : memcpy(output_buf_, input_, n * sizeof(float)).
 // ============================================================================
-#include "ns_engine.h"
+#include "engine.h"
 #include <cstring>   // std::memcpy
 #include <new>       // std::nothrow
 

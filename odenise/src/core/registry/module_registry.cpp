@@ -1,5 +1,5 @@
 // ============================================================================
-//  loader.cpp  --  Chargement dynamique portable des modules + registre.
+//  module_registry.cpp  --  Chargement dynamique portable des modules + registre.
 //
 //  Implemente ns::detail::ModuleRegistry.
 //
@@ -17,9 +17,6 @@
 //  Diagnostics via le LogManager (LOG / LOG_ERR), format error(from,what,why).
 // ============================================================================
 #include "module_registry.h"
-#include "tools/logger.h"
-
-#include <system_error>
 
 // ---------------------------------------------------------------------------
 //  Shim plateforme

@@ -15,7 +15,7 @@
 
 set(ODENISE_CORE_SOURCES
     engine.cpp
-    registry/loader.cpp
+    registry/module_registry.cpp
 )
 
 add_library(odenise_core SHARED ${ODENISE_CORE_SOURCES})
@@ -40,8 +40,8 @@ target_include_directories(odenise_core
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/chain
-        ${CMAKE_CURRENT_SOURCE_DIR}/registry
-        ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools
+        ${CMAKE_CURRENT_SOURCE_DIR}/registry)
 
 target_compile_features(odenise_core PUBLIC cxx_std_20)
 target_compile_definitions(odenise_core PRIVATE
@@ -80,5 +80,5 @@ install(TARGETS odenise_core
 
 # ns_engine.h est le seul header public installe.
 # Les headers internes (chain/, registry/, tools/) ne sont pas installes.
-install(FILES interfaces/ns_engine.h
+install(FILES interfaces/engine.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${ODENISE_VERSION_DIR})

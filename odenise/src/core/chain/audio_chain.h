@@ -16,8 +16,10 @@
 // ============================================================================
 #pragma once
 
-#include "ns_engine.h"
+#include "engine.h"
 
+#include <algorithm>
+#include <cstring>      // std::memcpy
 #include <atomic>
 #include <cstddef>
 #include <vector>

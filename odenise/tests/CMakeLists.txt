@@ -8,6 +8,10 @@ target_link_libraries(test_core PRIVATE odenise_core)
 # et ne transitent pas vers les consommateurs -- on les ajoute explicitement
 # pour les tests qui en ont besoin (logger.h, common.h, debug.h).
 target_include_directories(test_core PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/core)
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${CMAKE_SOURCE_DIR}/src/core/chain
+    ${CMAKE_SOURCE_DIR}/src/core/interfaces
+    ${CMAKE_SOURCE_DIR}/src/core/registry
+    ${CMAKE_SOURCE_DIR}/src/core/tools)
 
 add_test(NAME core_load_chain COMMAND test_core)

@@ -9,8 +9,7 @@
 //  Le premier argument de error() est __func__ (portable GCC/MSVC, identique
 //  en sortie : le nom de la fonction courante).
 // ============================================================================
-#include "ns_engine.h"
-#include "tools/logger.h"
+#include "engine.h"
 
 #include <memory>
 #include <cmath>     // std::fabs

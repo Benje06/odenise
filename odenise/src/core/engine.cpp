@@ -6,16 +6,10 @@
 // sont charges. Les autres sont connus (available) mais pas en memoire.
 // La AudioChain est interne au backend : l'engine passe par
 // install_module() / uninstall_module().
-#include "ns_engine.h"
-#include "registry/module_registry.h"
-#include "tools/logger.h"
-
-#include <cstdlib>
-#include <filesystem>
+#include "engine.h"
+#include "module_registry.h"
 
 namespace ns {
-
-namespace {
 
 std::filesystem::path exeDir() {
 #if defined(_WIN32)
@@ -58,8 +52,6 @@ BackendCaps toBackendCaps(const OdeniseBackendCapsC& c) {
     bc.backend_type = c.backend_type;
     return bc;
 }
-
-} // namespace
 
 class EngineImpl final : public Engine {
 public:

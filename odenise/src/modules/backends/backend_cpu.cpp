@@ -20,8 +20,8 @@
 //      - measure() : N blocs de bruit blanc, chrono std::chrono,
 //        remplit last_latency_ + last_stats_, store(release) sur measure_ready_.
 // ============================================================================
-#include "ns_engine.h"
-#include "chain/audio_chain.h"
+#include "engine.h"
+#include "audio_chain.h"
 
 #include <algorithm>    // std::min, std::max
 #include <chrono>       // std::chrono::steady_clock

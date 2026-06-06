@@ -12,19 +12,23 @@
 #
 #  Include : les modules incluent ns_engine.h via interfaces/ du coeur.
 #  Ils ne linkent PAS contre le coeur (frontiere C : dlopen uniquement).
-#  L'include est prive : seul ns_engine.h est necessaire pour la vtable.
+#  L'include est prive : seul engine.h est necessaire pour la vtable.
 # ============================================================================
 
 # Chemin vers interfaces/ du coeur (ns_engine.h public).
 # Utilise par tous les modules de ce CMakeLists.
-set(ODENISE_CORE_INTERFACES ${CMAKE_SOURCE_DIR}/src/core/interfaces)
+set(ODENISE_CORE_INTERFACES
+    ${CMAKE_SOURCE_DIR}/src/core/interfaces)
 
 # Chemin vers src/core/ pour les headers internes (chain/, registry/, tools/).
 # Utilise uniquement par les modules qui incluent des headers internes du coeur
 # (ex: backend_cpu inclut chain/audio_chain.h).
 # Contrainte : ces modules doivent etre compiles avec le meme compilateur
 # que le coeur (GCC/UCRT64 pour CPU) -- jamais transmis a nvcc.
-set(ODENISE_CORE_INTERNAL ${CMAKE_SOURCE_DIR}/src/core)
+set(ODENISE_CORE_INTERNAL
+    ${CMAKE_SOURCE_DIR}/src/core
+    ${CMAKE_SOURCE_DIR}/src/core/tools
+    ${CMAKE_SOURCE_DIR}/src/core/chain)
 
 # --- Passthrough (suppression neutre, validation de la chaine) ---------------
 add_library(passthrough MODULE suppression/passthrough.cpp)
@@ -33,7 +37,9 @@ set_target_properties(passthrough PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${ODENISE_MODULE_OUTPUT_DIR}/suppression"
     RUNTIME_OUTPUT_DIRECTORY "${ODENISE_MODULE_OUTPUT_DIR}/suppression")
 
-target_include_directories(passthrough PRIVATE ${ODENISE_CORE_INTERFACES})
+target_include_directories(passthrough PRIVATE
+    ${ODENISE_CORE_INTERFACES}
+    ${ODENISE_CORE_INTERNAL})
 target_compile_features(passthrough PRIVATE cxx_std_20)
 
 if(MSVC)

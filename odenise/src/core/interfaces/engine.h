@@ -1,17 +1,19 @@
 // ============================================================================
-//  ns_engine.h  --  Coeur de traitement (debruitage spectral GPU/CPU)
+//  engine.h  --  Coeur de traitement (debruitage spectral GPU/CPU)
 //
 //  Couche 1 du projet odenise. C++ pur : ignore JUCE, gtkmm et GLib. Compile
 //  en bibliotheque PARTAGEE (libodenise) reutilisable. Requiert C++20.
 //
-//  S'inclut en direct :  #include "ns_engine.h"
+//  S'inclut en direct :  #include "engine.h"
 //
 //  Modele de threads, marque sur chaque methode :
 //    [RT]   appelable depuis le thread audio temps reel, non bloquant.
 //    [CTRL] thread de controle/UI ; peut allouer / bloquer.
 // ============================================================================
 #pragma once
-
+#include "logger.h"
+#include <cstdlib>
+#include <filesystem>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
