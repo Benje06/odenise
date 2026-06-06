@@ -1,7 +1,7 @@
 // ============================================================================
 //  module_registry.cpp  --  Chargement dynamique portable des modules + registre.
 //
-//  Implemente ns::detail::ModuleRegistry.
+//  Implemente odenise::detail::ModuleRegistry.
 //
 //  Deux phases distinctes :
 //    1. scan_modules() : decouverte via probe temporaire (open/probe/close).
@@ -45,7 +45,7 @@
   }
 #endif
 
-namespace ns::detail {
+namespace odenise::detail {
 
 namespace {
 
@@ -421,4 +421,4 @@ TestResult ModuleRegistry::self_test(ModuleKind kind, int id) {
     return out;
 }
 
-} // namespace ns::detail
+} // namespace odenise::detail

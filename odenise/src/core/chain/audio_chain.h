@@ -45,7 +45,7 @@
     #endif
 #endif
 
-namespace ns::chain {
+namespace odenise::chain {
 
 // ---------------------------------------------------------------------------
 //  ChainElement -- un element atomique de la liste plate RT.
@@ -207,4 +207,4 @@ private:
     int declared_latency_ = 0;
 };
 
-} // namespace ns::chain
+} // namespace odenise::chain

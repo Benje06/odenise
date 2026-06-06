@@ -3,7 +3,7 @@
 // ============================================================================
 #include "audio_chain.h"
 
-namespace ns::chain {
+namespace odenise::chain {
 
 // ---------------------------------------------------------------------------
 //  Fonctions d'execution pre-resolues -- appelees en RT via pointeur.
@@ -257,4 +257,4 @@ void AudioChain::process(int num_frames) noexcept {
         e.execute(e, num_frames);
 }
 
-} // namespace ns::chain
+} // namespace odenise::chain

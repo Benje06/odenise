@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace ns::detail {
+namespace odenise::detail {
 
 // ---------------------------------------------------------------------------
 //  AvailableModule -- metadonnees d'un module decouvert au scan.
@@ -126,4 +126,4 @@ private:
     std::vector<LoadedModule>    loaded_;     // modules charges, possedes par le registry
 };
 
-} // namespace ns::detail
+} // namespace odenise::detail

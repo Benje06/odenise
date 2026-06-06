@@ -39,7 +39,7 @@
 //  Fourni par CpuBackendImpl a chaque module lors de l'installation.
 //  Possede le scratch buffer pre-alloue a n_max * sizeof(float).
 // ============================================================================
-class CpuBackendContext final : public ns::BackendContext {
+class CpuBackendContext final : public odenise::BackendContext {
 public:
     explicit CpuBackendContext(int n_max)
         : scratch_(static_cast<std::size_t>(n_max) * sizeof(float), std::byte{0}) {}
@@ -53,7 +53,7 @@ public:
     void* compute_stream() noexcept override { return nullptr; }
 
     // [CTRL] Type de backend : CPU.
-    int   backend_type()   const noexcept override { return ns::kBackendCPU; }
+    int   backend_type()   const noexcept override { return odenise::kBackendCPU; }
 
     // [CTRL] Redimensionne le scratch buffer (appele par reconfigure).
     void resize(int n_max) {
@@ -72,7 +72,7 @@ private:
 //  (OdeniseModuleEntryFn retourne ModuleBase*). Le loader caste vers
 //  BackendBase* via dynamic_cast apres avoir verifie le kind.
 // ============================================================================
-class CpuBackendImpl final : public ns::BackendBase, public ns::ModuleBase {
+class CpuBackendImpl final : public odenise::BackendBase, public odenise::ModuleBase {
 public:
     explicit CpuBackendImpl(int sample_rate, int n_max)
         : sample_rate_(sample_rate)
@@ -144,13 +144,13 @@ public:
     // -----------------------------------------------------------------------
     const OdeniseModuleInfoC* info_c() const noexcept override {
         static const OdeniseModuleInfoC s_info = {
-            /* abi_version    */ ns::kAbiVersion,
+            /* abi_version    */ odenise::kAbiVersion,
             /* id             */ 0,
-            /* kind           */ static_cast<int>(ns::ModuleKind::ComputeBackend),
+            /* kind           */ static_cast<int>(odenise::ModuleKind::ComputeBackend),
             /* name           */ "cpu",
             /* description    */ "Backend de calcul CPU (repli, sans GPU)",
             /* needs_gpu      */ 0,
-            /* backend_type_id*/ ns::kBackendCPU
+            /* backend_type_id*/ odenise::kBackendCPU
         };
         return &s_info;
     }
@@ -167,7 +167,7 @@ public:
             /* cc_minor    */ 0,
             /* has_fp16    */ 0,
             /* has_tensor  */ 0,
-            /* backend_type*/ ns::kBackendCPU
+            /* backend_type*/ odenise::kBackendCPU
         };
         return &s_caps;
     }
@@ -193,8 +193,8 @@ public:
     //  Appele par l'engine au bind et a chaque Engine::reconfigure().
     //  Hors RT uniquement. Pas de destruction/recreation du thread RT.
     // -----------------------------------------------------------------------
-    void reconfigure(const ns::EngineCaps& caps,
-                     const ns::RuntimeConfig& cfg) override {
+    void reconfigure(const odenise::EngineCaps& caps,
+                     const odenise::RuntimeConfig& cfg) override {
         // Suspend les threads sans les detruire.
         P_Thread();
         P_Thread2();
@@ -212,8 +212,8 @@ public:
     // -----------------------------------------------------------------------
     //  install_module -- installe un module dans la chaine.
     // -----------------------------------------------------------------------
-    bool install_module(ns::ModuleBase* mod,
-                        ns::ModuleKind  kind,
+    bool install_module(odenise::ModuleBase* mod,
+                        odenise::ModuleKind  kind,
                         int             position) override {
         if (!mod) return false;
         const bool ok = chain_.install(this, &ctx_, mod, kind, position);
@@ -226,7 +226,7 @@ public:
         return ok;
     }
 
-    void uninstall_module(ns::ModuleKind kind, int position) noexcept override {
+    void uninstall_module(odenise::ModuleKind kind, int position) noexcept override {
         chain_.remove(this, position);
         first_module_ = nullptr;
         last_module_  = nullptr;
@@ -239,13 +239,13 @@ public:
     //  Le traitement reel est effectue par Run() dans le thread dedie.
     //  Les buffers in/out sont cables une fois pour toutes a l'init/reconfigure.
     // -----------------------------------------------------------------------
-    ns::Status process(const float* const* in,
+    odenise::Status process(const float* const* in,
                        float*              out,
                        int                 num_frames) noexcept override {
         (void)in; (void)out; (void)num_frames;
         if (nodes_empty_)
-            return ns::Status::Unsupported;
-        return ns::Status::Ok;
+            return odenise::Status::Unsupported;
+        return odenise::Status::Ok;
     }
 
     // -----------------------------------------------------------------------
@@ -304,10 +304,10 @@ public:
     //  Methodes ModuleBase requises par l'heritage (non utilisees par le backend).
     // -----------------------------------------------------------------------
     int    latency_samples() const noexcept override { return 0; }
-    bool   install(ns::BackendContext*) override { return true; }
-    void   uninstall(ns::BackendContext*) noexcept override {}
-    void   set_param(ns::ParamId, float) noexcept override {}
-    void   reconfigure(const ns::RuntimeConfig&) override {}
+    bool   install(odenise::BackendContext*) override { return true; }
+    void   uninstall(odenise::BackendContext*) noexcept override {}
+    void   set_param(odenise::ParamId, float) noexcept override {}
+    void   reconfigure(const odenise::RuntimeConfig&) override {}
     void*  output_buf() noexcept override { return nullptr; }
     void   set_input(const void*) noexcept override {}
     void   process(int) noexcept override {}
@@ -316,15 +316,15 @@ private:
     int                    sample_rate_;
     int                    n_max_;
     CpuBackendContext      ctx_;
-    ns::chain::AudioChain  chain_;
-    ns::ModuleBase*        first_module_ = nullptr;
-    ns::ModuleBase*        last_module_  = nullptr;
+    odenise::chain::AudioChain  chain_;
+    odenise::ModuleBase*        first_module_ = nullptr;
+    odenise::ModuleBase*        last_module_  = nullptr;
     bool                   nodes_empty_  = true;
 };
 
 // ============================================================================
 //  Point d'entree du module.
 // ============================================================================
-extern "C" ODENISE_EXPORT ns::ModuleBase* odenise_module_entry(int sample_rate, int n_max) {
+extern "C" ODENISE_EXPORT odenise::ModuleBase* odenise_module_entry(int sample_rate, int n_max) {
     return new (std::nothrow) CpuBackendImpl(sample_rate, n_max);
 }

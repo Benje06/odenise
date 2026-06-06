@@ -57,13 +57,13 @@
 // ===========================================================================
 
 struct OdeniseModuleInfoC {
-    int         abi_version;     // DOIT valoir ns::kAbiVersion
+    int         abi_version;     // DOIT valoir odenise::kAbiVersion
     int         id;
-    int         kind;            // valeur de ns::ModuleKind
+    int         kind;            // valeur de odenise::ModuleKind
     const char* name;
     const char* description;
     int         needs_gpu;       // 0/1
-    int         backend_type_id; // ns::kBackendAny, kBackendCPU, kBackendCUDA, ...
+    int         backend_type_id; // odenise::kBackendAny, kBackendCPU, kBackendCUDA, ...
                                  // ou valeur libre pour un backend tiers (>99)
 };
 
@@ -83,7 +83,7 @@ struct OdeniseTestResultC {
     const char* detail;
 };
 
-namespace ns {
+namespace odenise {
 
 inline constexpr int kAbiVersion = 1;
 
@@ -554,7 +554,7 @@ createEngine(const EngineCaps& caps,
 // l'UI propose la liste avant creation). Peuplee par les modules charges.
 ODENISE_API std::vector<ModuleInfo> availableBackends();
 
-} // namespace ns
+} // namespace odenise
 
 // ===========================================================================
 //  FRONTIERE DES MODULES DYNAMIQUES (dlopen / LoadLibrary)
@@ -577,7 +577,7 @@ extern "C" {
 
 // Unique symbole exporte par chaque module (.so/.dll).
 // Le loader fait dlsym sur ce nom puis appelle entry(sample_rate, n_max).
-typedef ns::ModuleBase* (*OdeniseModuleEntryFn)(int sample_rate, int n_max);
+typedef odenise::ModuleBase* (*OdeniseModuleEntryFn)(int sample_rate, int n_max);
 
 #define ODENISE_MODULE_ENTRY_SYMBOL "odenise_module_entry"
 

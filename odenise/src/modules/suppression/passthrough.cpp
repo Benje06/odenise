@@ -15,7 +15,7 @@
 #include <cstring>   // std::memcpy
 #include <new>       // std::nothrow
 
-class PassthroughModule final : public ns::ModuleBase {
+class PassthroughModule final : public odenise::ModuleBase {
 public:
     PassthroughModule() = default;
     ~PassthroughModule() override = default;
@@ -25,13 +25,13 @@ public:
     // -----------------------------------------------------------------------
     const OdeniseModuleInfoC* info_c() const noexcept override {
         static const OdeniseModuleInfoC s_info = {
-            /* abi_version    */ ns::kAbiVersion,
+            /* abi_version    */ odenise::kAbiVersion,
             /* id             */ 1,
-            /* kind           */ static_cast<int>(ns::ModuleKind::Suppression),
+            /* kind           */ static_cast<int>(odenise::ModuleKind::Suppression),
             /* name           */ "passthrough",
             /* description    */ "Module neutre : sortie = entree (validation de la chaine)",
             /* needs_gpu      */ 0,
-            /* backend_type_id*/ ns::kBackendAny
+            /* backend_type_id*/ odenise::kBackendAny
         };
         return &s_info;
     }
@@ -76,24 +76,24 @@ public:
 
     // [CTRL] Installation : recupere le buffer de sortie depuis le scratch.
     // ctx peut etre nullptr (cas du self-test interne).
-    bool install(ns::BackendContext* ctx) override {
+    bool install(odenise::BackendContext* ctx) override {
         if (ctx)
             output_buf_ = ctx->scratch_buf(kMaxFrames * sizeof(float));
         // Si ctx == nullptr (self-test interne), output_buf_ reste tel quel.
         return true;
     }
 
-    void uninstall(ns::BackendContext* /*ctx*/) noexcept override {
+    void uninstall(odenise::BackendContext* /*ctx*/) noexcept override {
         // Le scratch appartient au backend -- pas de liberation ici.
         output_buf_ = nullptr;
         input_      = nullptr;
     }
 
-    void set_param(ns::ParamId /*id*/, float /*value*/) noexcept override {}
+    void set_param(odenise::ParamId /*id*/, float /*value*/) noexcept override {}
 
     // [CTRL] Reconfiguration structurelle. Le passthrough n'a rien a
     // reconfigurer : pas de buffers propres, pas de parametres DSP.
-    void reconfigure(const ns::RuntimeConfig& /*cfg*/) override {}
+    void reconfigure(const odenise::RuntimeConfig& /*cfg*/) override {}
 
     // [RT] Buffer de sortie du module.
     void* output_buf() noexcept override { return output_buf_; }
@@ -127,7 +127,7 @@ private:
 // ============================================================================
 //  Point d'entree du module.
 // ============================================================================
-extern "C" ODENISE_EXPORT ns::ModuleBase* odenise_module_entry(int /*sample_rate*/,
+extern "C" ODENISE_EXPORT odenise::ModuleBase* odenise_module_entry(int /*sample_rate*/,
                                                                 int /*n_max*/) {
     return new (std::nothrow) PassthroughModule;
 }

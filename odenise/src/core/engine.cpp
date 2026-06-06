@@ -9,7 +9,7 @@
 #include "engine.h"
 #include "module_registry.h"
 
-namespace ns {
+namespace odenise {
 
 std::filesystem::path exeDir() {
 #if defined(_WIN32)
@@ -313,4 +313,4 @@ std::vector<ModuleInfo> availableBackends() {
     return reg.list_available(ModuleKind::ComputeBackend);
 }
 
-} // namespace ns
+} // namespace odenise
