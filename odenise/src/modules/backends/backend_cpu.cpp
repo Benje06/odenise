@@ -14,10 +14,13 @@
 //      - info_c()  : retourne OdeniseModuleInfoC statique.
 //      - caps_c()  : retourne OdeniseBackendCapsC statique.
 //      - self_test_c() : retourne OdeniseTestResultC (test instanciation).
-//      - reconfigure() : redimensionne le scratch, propage aux modules.
+//      - reconfigure() : suspend threads, redimensionne le scratch, reprend.
 //      - install_module() : installe le module via AudioChain.
-//      - process() : injecte in[0] dans le premier module, execute AudioChain.
-//      - measure() : N blocs de bruit blanc, chrono std::chrono,
+//      - process() : guard RT -- verifie nodes_empty_, retourne Ok/Unsupported.
+//        Le traitement reel est effectue par Run() dans le thread dedie.
+//      - Run()  : boucle RT -- pause cooperative + stop + TODO chain_.process().
+//      - Run2() : thread mesure hors RT -- moyenne glissante + TODO timestamps.
+//      - measure() : N blocs bruit blanc, chrono std::chrono,
 //        remplit last_latency_ + last_stats_, store(release) sur measure_ready_.
 // ============================================================================
 #include "engine.h"
@@ -28,6 +31,7 @@
 #include <cstring>      // std::memcpy
 #include <new>          // std::nothrow
 #include <random>       // std::mt19937, std::uniform_real_distribution
+#include <thread>       // std::this_thread::yield
 #include <vector>       // std::vector
 
 // ============================================================================
@@ -75,7 +79,66 @@ public:
         , n_max_(n_max)
         , ctx_(n_max) {}
 
-    ~CpuBackendImpl() override = default;
+    ~CpuBackendImpl() override {
+        // Arrete les threads avant destruction.
+        T_Thread();
+        T_Thread();  // T_Thread ne cible que thread_ ; appel symétrique pour thread2_
+        // TODO : ajouter T_Thread2() quand S_Thread2() sera lancé dans reconfigure.
+    }
+
+    // -----------------------------------------------------------------------
+    //  Thread RT -- Run() / Run2()
+    //
+    //  Run() : boucle RT principale.
+    //    - Pause cooperative (pause_requested / paused_) sans mutex, RT-safe.
+    //    - Arret propre via stop_requested() (MSVC) ou pthread_cancel (pthread).
+    //    - TODO : lire buffer d'entree cable, appeler chain_.process(),
+    //      poser t_in_/t_out_ pour Run2(). Stub tant que le modele de buffer
+    //      n'est pas determine.
+    //
+    //  Run2() : thread de mesure hors RT.
+    //    - Calcule une moyenne glissante depuis t_in_/t_out_ poses par Run().
+    //    - Peut etre mis en pause via P_Thread2() pendant un reconfigure.
+    //    - yield() entre deux calculs : cede le CPU, pas de busy loop.
+    //    - TODO : brancher le calcul reel quand Run() posera les timestamps.
+    // -----------------------------------------------------------------------
+    bool Run() override {
+        // --- pause cooperative (RT-safe, zero mutex) -------------------------
+        if (pause_requested()) {
+            paused_.store(true, std::memory_order_release);
+            while (pause_requested()) { std::this_thread::yield(); }
+            paused_.store(false, std::memory_order_release);
+            return true;
+        }
+#ifdef _MSC_VER
+        // --- arret propre (MSVC : pas de pthread_cancel) ---------------------
+        if (stop_requested()) return false;
+#endif
+        // --- TODO : traitement RT --------------------------------------------
+        // t_in_  = std::chrono::steady_clock::now();
+        // chain_.process(n_frames_);
+        // t_out_ = std::chrono::steady_clock::now();
+        return true;
+    }
+
+    bool Run2() override {
+        // --- pause cooperative -----------------------------------------------
+        if (pause2_requested()) {
+            paused2_.store(true, std::memory_order_release);
+            while (pause2_requested()) { std::this_thread::yield(); }
+            paused2_.store(false, std::memory_order_release);
+            return true;
+        }
+#ifdef _MSC_VER
+        if (stop2_requested()) return false;
+#endif
+        // --- TODO : moyenne glissante depuis t_in_ / t_out_ ------------------
+        // Lit les timestamps atomiques poses par Run(), accumule sur une
+        // fenetre glissante, ecrit last_stats_ + last_latency_,
+        // pose measure_ready_(release).
+        std::this_thread::yield();  // hors RT : cede le CPU entre deux calculs
+        return true;
+    }
 
     // -----------------------------------------------------------------------
     //  info_c -- metadonnees POD (frontiere inter-compilateurs).
@@ -127,23 +190,24 @@ public:
     }
 
     // -----------------------------------------------------------------------
-    //  reconfigure -- redimensionne les ressources du backend et propage
-    //  aux modules installes. Appele par l'engine au bind et a chaque
-    //  Engine::reconfigure(). Hors RT uniquement.
+    //  reconfigure -- suspend threads, redimensionne les ressources, reprend.
+    //  Appele par l'engine au bind et a chaque Engine::reconfigure().
+    //  Hors RT uniquement. Pas de destruction/recreation du thread RT.
     // -----------------------------------------------------------------------
     void reconfigure(const ns::EngineCaps& caps,
                      const ns::RuntimeConfig& cfg) override {
+        // Suspend les threads sans les detruire.
+        P_Thread();
+        P_Thread2();
+
         sample_rate_ = caps.sample_rate;
         n_max_       = caps.n_max;
-
-        // Redimensionne le scratch buffer si n_max a change.
         ctx_.resize(n_max_);
-
-        // Propage aux modules installes.
-        // Pour l'instant, les modules sont reinstalles via uninstall/install
-        // pour qu'ils recoivent le nouveau scratch. A terme, un
-        // module->reconfigure(cfg) suffira si le scratch est inchange.
         (void)cfg;  // sera utilise quand les modules exploiteront n, hop, etc.
+
+        // Reprend Run2 avant Run : mesure prete avant le traitement RT.
+        R_Thread2();
+        R_Thread();
     }
 
     // -----------------------------------------------------------------------
@@ -172,32 +236,16 @@ public:
     }
 
     // -----------------------------------------------------------------------
-    //  process -- [RT] traitement d'un bloc audio.
+    //  process -- [RT] guard : verifie que la chaine est prete.
+    //  Le traitement reel est effectue par Run() dans le thread dedie.
+    //  Les buffers in/out sont cables une fois pour toutes a l'init/reconfigure.
     // -----------------------------------------------------------------------
     ns::Status process(const float* const* in,
                        float*              out,
                        int                 num_frames) noexcept override {
-        if (!in || !out || num_frames <= 0)
-            return ns::Status::InvalidArg;
-
+        (void)in; (void)out; (void)num_frames;
         if (nodes_empty_)
             return ns::Status::Unsupported;
-
-        // Injecte l'entree dans le premier module (cable a l'install).
-        if (first_module_)
-            first_module_->set_input(in[0]);
-
-        // Execute la chaine plate cablee.
-        chain_.process(num_frames);
-
-        // Copie la sortie du dernier module vers out.
-        if (last_module_) {
-            const void* src = last_module_->output_buf();
-            if (src)
-                std::memcpy(out, src,
-                    static_cast<std::size_t>(num_frames) * sizeof(float));
-        }
-
         return ns::Status::Ok;
     }
 

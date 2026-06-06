@@ -46,6 +46,7 @@
 /* -------------------------------------------------------------------------
  * Implémentation pthread (Linux / GCC / UCRT64-MinGW)
  * ------------------------------------------------------------------------- */
+#include <atomic>
 #include <pthread.h>
 
 class Thread {
@@ -56,6 +57,17 @@ private:
     /* thread loop function */
     static void* T_Loop (void*);
     static void* T_Loop2(void*);
+    /* Pause coopérative -- zéro mutex dans Run() (RT-safe).
+     * pause_  : commande  (posée par P_Thread, lue par Run dans la boucle RT).
+     * paused_ : confirmation (posée par Run quand il entre en pause,
+     *           lue par P_Thread pour attendre la suspension effective). */
+    std::atomic<bool> pause_ {false};
+    std::atomic<bool> pause2_ {false};
+protected:
+    /* Confirmations de pause -- écrites par Run()/Run2() quand ils entrent
+     * et sortent de pause. Lues par P_Thread()/P_Thread2() hors RT. */
+    std::atomic<bool> paused_ {false};
+    std::atomic<bool> paused2_{false};
 protected:
     /* function to define in your class, is what the thread do */
     virtual bool Run()  = 0;
@@ -63,14 +75,23 @@ protected:
     virtual bool Run2() = 0;
     /* internal start */
     int S_Thread(void* (*f)(void*));
-    /* thread start / stop / join */
+    /* thread start / stop / join / pause / resume */
     int S_Thread();
     int S_Thread2();
     int J_Thread();
     int T_Thread();
+    int P_Thread();   // pause  thread  (attend confirmation de suspension)
+    int R_Thread();   // resume thread
+    int P_Thread2();  // pause  thread2
+    int R_Thread2();  // resume thread2
     /* internal constructor */
     Thread(void* (*f)(void*)) { S_Thread(f); }
 public:
+    /* Lecture des flags pause/stop depuis Run() -- RT-safe (load acquire,
+     * pas de mutex). Run() consulte pause_requested() en début de boucle ;
+     * si true, pose paused_=true, dort, repose paused_=false à la reprise. */
+    bool pause_requested()  const noexcept { return pause_ .load(std::memory_order_acquire); }
+    bool pause2_requested() const noexcept { return pause2_.load(std::memory_order_acquire); }
     Thread();
     ~Thread();
 };
@@ -91,6 +112,12 @@ private:
     std::thread          thread2_;
     std::atomic<bool>    stop_ {false};
     std::atomic<bool>    stop2_{false};
+    /* Pause coopérative -- zéro mutex dans Run() (RT-safe).
+     * pause_  : commande  (posée par P_Thread, lue par Run dans la boucle RT).
+     * paused_ : confirmation (posée par Run quand il entre en pause,
+     *           lue par P_Thread pour attendre la suspension effective). */
+    std::atomic<bool>    pause_ {false};
+    std::atomic<bool>    pause2_ {false};
     /* fonction arbitraire passée au constructeur interne (peut être nullptr).
      * Sémantique identique à pthread_create(..., f, this) :
      * f reçoit this comme void*, son retour est ignoré. */
@@ -98,24 +125,37 @@ private:
     /* lance custom_fn_(this) dans thread_ -- appelé par le constructeur interne */
     int S_Thread_fn();
 protected:
+    /* Confirmations de pause -- écrites par Run()/Run2() quand ils entrent
+     * et sortent de pause. Lues par P_Thread()/P_Thread2() hors RT. */
+    std::atomic<bool>    paused_ {false};
+    std::atomic<bool>    paused2_{false};
+protected:
     /* function to define in your class, is what the thread do */
     virtual bool Run()  = 0;
     // Run2 est optionnel : à surcharger uniquement si un second thread est nécessaire.
     virtual bool Run2() = 0;
-    /* thread start / stop / join */
+    /* thread start / stop / join / pause / resume */
     int S_Thread();
     int S_Thread2();
     int J_Thread();
     int T_Thread();
+    int P_Thread();   // pause  thread  (attend confirmation de suspension)
+    int R_Thread();   // resume thread
+    int P_Thread2();  // pause  thread2
+    int R_Thread2();  // resume thread2
     /* internal constructor : lance f(this) dans thread_, comme pthread_create.
      * T_Thread() pose stop_ = true puis joint -- f doit consulter
      * stop_requested() pour terminer proprement. */
     Thread(void* (*f)(void*)) : custom_fn_(f) { S_Thread_fn(); }
 public:
-    /* Expose stop_ en lecture seule pour que Run() puisse le consulter.
-     * Usage : while (!stop_requested() && /* condition métier *\/) { ... } */
-    bool stop_requested()  const noexcept { return stop_ .load(std::memory_order_acquire); }
-    bool stop2_requested() const noexcept { return stop2_.load(std::memory_order_acquire); }
+    /* Lecture des flags depuis Run() -- RT-safe (load acquire, pas de mutex).
+     * stop_requested()  : Run() doit retourner false pour terminer.
+     * pause_requested() : Run() doit entrer en pause (pose paused_=true,
+     *                     dort, repose paused_=false à la reprise). */
+    bool stop_requested()   const noexcept { return stop_  .load(std::memory_order_acquire); }
+    bool stop2_requested()  const noexcept { return stop2_ .load(std::memory_order_acquire); }
+    bool pause_requested()  const noexcept { return pause_ .load(std::memory_order_acquire); }
+    bool pause2_requested() const noexcept { return pause2_.load(std::memory_order_acquire); }
     Thread();
     ~Thread();
 };

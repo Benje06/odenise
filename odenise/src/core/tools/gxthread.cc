@@ -32,6 +32,7 @@
  *
  */
 #include "gxthread.h"
+#include <thread>   // std::this_thread::yield (pause coopérative dans Run())
 
 /* ============================================================================
  * Implémentation pthread (Linux / GCC / UCRT64-MinGW)
@@ -80,6 +81,41 @@ int Thread::T_Thread() {
     pthread_cancel(thread);
     J_Thread();
     LOG(LOG_OUT());
+    return 0;
+}
+
+/* P_Thread -- suspend Run() de façon coopérative, RT-safe.
+ * Pose pause_=true, puis busy-wait court jusqu'à ce que Run() confirme
+ * sa suspension via paused_=true. Jamais appelé depuis Run().
+ *
+ * Convention attendue dans Run() :
+ *   if (pause_requested()) {
+ *       paused_.store(true,  std::memory_order_release);
+ *       while (pause_requested()) { std::this_thread::yield(); }
+ *       paused_.store(false, std::memory_order_release);
+ *   }
+ */
+int Thread::P_Thread() {
+    pause_.store(true, std::memory_order_release);
+    while (!paused_.load(std::memory_order_acquire)) {}
+    return 0;
+}
+
+/* R_Thread -- reprend Run() après une pause. */
+int Thread::R_Thread() {
+    pause_.store(false, std::memory_order_release);
+    return 0;
+}
+
+/* P_Thread2 / R_Thread2 -- même logique pour Run2(). */
+int Thread::P_Thread2() {
+    pause2_.store(true, std::memory_order_release);
+    while (!paused2_.load(std::memory_order_acquire)) {}
+    return 0;
+}
+
+int Thread::R_Thread2() {
+    pause2_.store(false, std::memory_order_release);
     return 0;
 }
 
@@ -164,6 +200,41 @@ int Thread::T_Thread() {
     stop_.store(true, std::memory_order_release);
     J_Thread();
     LOG(std::string("<-  ") + __func__);
+    return 0;
+}
+
+/* P_Thread -- suspend Run() de façon coopérative, RT-safe.
+ * Pose pause_=true, puis busy-wait court jusqu'à ce que Run() confirme
+ * sa suspension via paused_=true. Jamais appelé depuis Run().
+ *
+ * Convention attendue dans Run() :
+ *   if (pause_requested()) {
+ *       paused_.store(true,  std::memory_order_release);
+ *       while (pause_requested()) { std::this_thread::yield(); }
+ *       paused_.store(false, std::memory_order_release);
+ *   }
+ */
+int Thread::P_Thread() {
+    pause_.store(true, std::memory_order_release);
+    while (!paused_.load(std::memory_order_acquire)) {}
+    return 0;
+}
+
+/* R_Thread -- reprend Run() après une pause. */
+int Thread::R_Thread() {
+    pause_.store(false, std::memory_order_release);
+    return 0;
+}
+
+/* P_Thread2 / R_Thread2 -- même logique pour Run2(). */
+int Thread::P_Thread2() {
+    pause2_.store(true, std::memory_order_release);
+    while (!paused2_.load(std::memory_order_acquire)) {}
+    return 0;
+}
+
+int Thread::R_Thread2() {
+    pause2_.store(false, std::memory_order_release);
     return 0;
 }
 
