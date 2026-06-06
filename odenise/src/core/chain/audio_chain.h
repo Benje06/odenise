@@ -154,11 +154,13 @@ public:
     // Somme des latences declarees par tous les modules de la chaine.
     CHAIN int declared_latency_samples() const noexcept { return declared_latency_; }
 
-    // Callback declenche a chaque recablage avec la nouvelle latence declaree.
+    // [CTRL] Enregistre le callback de changement de latence.
+    // Declenche a chaque recablage avec la nouvelle latence declaree.
     // L'engine l'enregistre pour notifier l'hote audio (PDC).
     // Pointeur de fonction brut : pas de std::function (C4251 MSVC).
-    void (*on_latency_changed)(void* user, int samples) = nullptr;
-    void*  on_latency_changed_user                      = nullptr;
+    // Passer fn=nullptr pour desactiver. Jamais appele depuis le RT.
+    CHAIN void set_latency_callback(void (*fn)(void*, int) noexcept,
+                                    void* user) noexcept;
 
 private:
     // -----------------------------------------------------------------------
@@ -205,6 +207,11 @@ private:
 
     // Latence declaree totale (sommee au cablage).
     int declared_latency_ = 0;
+
+    // Callback latence -- ecrit par set_latency_callback() hors RT,
+    // lu par recalculate_latency() hors RT. Jamais touche en RT.
+    void (*on_latency_changed_)(void*, int) noexcept = nullptr;
+    void*  on_latency_changed_user_                  = nullptr;
 };
 
 } // namespace ns::chain

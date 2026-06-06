@@ -35,7 +35,6 @@
     #define GXTHREAD_H
     #include <pthread.h>
     #include "common.h"
-    #include "lang.h" // for t_fatal
  
 class Thread {
     private:
@@ -49,9 +48,9 @@ class Thread {
         /* function to define in your class, is what the thread do */
         virtual bool Run() = 0;
         // Run2 est optionnel : a surcharger uniquement si un second thread est necessaire.
-        virtual bool Run2() { return false; }
+        virtual bool Run2() = 0;
         /* internal start */
-        virtual int S_Thread(void* (*f) (void*));
+        int S_Thread(void* (*f) (void*));
         /* thread start */
         int S_Thread();
         int S_Thread2();

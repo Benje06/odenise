@@ -94,7 +94,8 @@ void AudioChain::rebuild(BackendBase* backend) {
                 transfer.src     = prev.module->output_buf();
                 transfer.dst     = node.module->output_buf(); // sera set_input
                 transfer.bytes   = 0; // resolu par le backend a l'install
-                transfer.stream  = nullptr; // TODO phase 5 : cudaStream_t* fourni par le backend CUDA
+                transfer.stream  = backend ? backend->caps_c()->is_gpu ?
+                                   nullptr : nullptr : nullptr; // stream CUDA
                 flat.push_back(transfer);
                 std::string msg = _("audio_chain: inserted H2D transfer at position ");
                 msg += std::to_string(i);
@@ -147,8 +148,18 @@ void AudioChain::recalculate_latency() {
     for (const auto& node : nodes_)
         total += node.module->latency_samples();
     declared_latency_ = total;
-    if (on_latency_changed)
-        on_latency_changed(on_latency_changed_user, declared_latency_);
+    if (on_latency_changed_)
+        on_latency_changed_(on_latency_changed_user_, declared_latency_);
+}
+
+// ---------------------------------------------------------------------------
+//  set_latency_callback -- enregistre le callback de changement de latence.
+//  [CTRL] Hors RT uniquement.
+// ---------------------------------------------------------------------------
+void AudioChain::set_latency_callback(void (*fn)(void*, int) noexcept,
+                                      void* user) noexcept {
+    on_latency_changed_      = fn;
+    on_latency_changed_user_ = user;
 }
 
 // ---------------------------------------------------------------------------
