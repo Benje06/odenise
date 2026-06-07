@@ -34,7 +34,8 @@ target_include_directories(odenise_log
 target_compile_features(odenise_log PUBLIC cxx_std_20)
 target_compile_definitions(odenise_log PRIVATE
     LOGGER_EXPORTS=1
-    ODENISE_BUILD_LIBRARY=1)
+    ODENISE_BUILD_LIBRARY=1
+    DEBUG_TOOL=1)
 
 if(MSVC)
     target_compile_options(odenise_log PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4>)

@@ -138,6 +138,16 @@ public:
     // Retire le module a la position donnee et recable les voisins.
     CHAIN void remove(BackendBase* backend, size_t position) noexcept;
 
+
+    // -----------------------------------------------------------------------
+    //  
+    // -----------------------------------------------------------------------
+    CHAIN ModuleBase* get_first() const noexcept { return nodes_.begin()->module; }
+    // -----------------------------------------------------------------------
+    //  
+    // -----------------------------------------------------------------------
+    CHAIN ModuleBase* get_last() const noexcept { return (nodes_.end() - 1)->module; }
+
     // -----------------------------------------------------------------------
     //  Execution RT -- appelee par le backend a chaque bloc.
     //  Iteration sur la liste plate active. Zero decision, zero allocation.
@@ -178,8 +188,8 @@ private:
 
     // Resout le type de contexte d'un module (kBackendCPU, kBackendCUDA, ...).
     // Consulte le backend pour savoir quels contextes sont disponibles.
-    static int resolve_context(BackendBase*  backend,
-                               ModuleBase*   mod);
+    static size_t resolve_context(BackendBase*  backend,
+                                  ModuleBase*   mod);
 
     // Fonctions d'execution pre-resolues (pointees par ChainElement::execute).
     // Separees selon le type d'element pour eviter tout branchement en RT.

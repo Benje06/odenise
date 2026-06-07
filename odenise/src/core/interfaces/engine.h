@@ -94,10 +94,10 @@ inline constexpr size_t kAbiVersion = 1;
 //  Un backend tiers choisit un id libre (ex. 100, 200...) sans modifier ce
 //  fichier : le coeur fait correspondre module et backend par cet entier.
 // ---------------------------------------------------------------------------
-inline constexpr size_t kBackendAny  = 0;
-inline constexpr size_t kBackendCPU  = 1;
-inline constexpr size_t kBackendCUDA = 2;
-inline constexpr size_t kBackendROCm = 3;
+inline constexpr size_t kBackendAny  = 1;
+inline constexpr size_t kBackendCPU  = 2;
+inline constexpr size_t kBackendCUDA = 3;
+inline constexpr size_t kBackendROCm = 4;
 // reservez des plages > 99 pour les backends tiers
 
 // ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ struct RuntimeConfig {
     float   window_ratio   = 1.0f;   // 1.0 = synthese symetrique ; <1 = asym.
     int     num_bands      = 32;     // <= max_bands
     FftMode fft_mode       = FftMode::R2C;
-    size_t  module_id      = 0;      // TODO: use audio_chain list
+    size_t  module_id      = 1;      // TODO: use audio_chain list
     int     window_id      = 0;
     int     dualmic_id     = 0;      // 0 = mono
 };
@@ -477,7 +477,6 @@ public:
                                 const ProcessingStats& stats,
                                 int measured_samples) noexcept             = nullptr;
     void* callback_user = nullptr;  // contexte commun aux deux callbacks
-
 protected:
     // Ecrit par measure() hors RT, lu par l'engine/UI hors RT via les
     // accesseurs publics. Jamais touche par process() -- zéro impact RT.
@@ -485,6 +484,8 @@ protected:
     ProcessingStats         last_stats_;
     std::atomic<bool>       measure_ready_{false};
     TrackIO                 io_;
+    virtual bool Run() = 0;
+    virtual bool Run2() = 0;
 };
 
 // ===========================================================================
@@ -560,7 +561,7 @@ createEngine(const EngineCaps& caps,
 
 // Enumeration des backends disponibles SANS instancier de moteur (pour que
 // l'UI propose la liste avant creation). Peuplee par les modules charges.
-ODENISE_API std::vector<ModuleInfo> availableBackends();
+// ODENISE_API std::vector<ModuleInfo> availableBackends();
 
 } // namespace odenise
 

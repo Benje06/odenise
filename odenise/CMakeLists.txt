@@ -50,6 +50,10 @@ include(GNUInstallDirs)
 
 set(ODENISE_VERSION_DIR "odenise/${PROJECT_VERSION}")
 
+if(MSVC)
+    set(CMAKE_CONFIGURATION_TYPES Debug Release RelWithDebInfo MinSizeRel CACHE STRING "" FORCE)
+endif()
+
 # Layout de build : meme arbre que le prefix, sous le builddir.
 # GNUInstallDirs fournit les noms relatifs (bin, lib, share, include).
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}/$<0:>)

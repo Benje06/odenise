@@ -195,7 +195,7 @@ private:
         // AUTO (0) : premier ComputeBackend disponible.
         if (available_id == 0) {
             available_id = registry_.first_available_id(ModuleKind::ComputeBackend);
-            if (available_id == 0) {
+            if (available_id == 65535) {
                 LOG(_("engine: no compute backend available"));
                 return;
             }
@@ -229,7 +229,7 @@ private:
         std::string msg = _("engine: bound backend id=");
         msg += std::to_string(available_id);
         msg += _(" name='");
-        msg += (backend_->caps_c()->name ? backend_->caps_c()->name : "");
+        msg += (backend_->info_c()->name ? backend_->info_c()->name : "");
         msg += "'";
         LOG(msg);
     }
@@ -244,64 +244,80 @@ private:
         module_id_ = 0;
     }
     void releaseAllModule() {
-        for( auto lm = loaded_.end(); lm != loaded_.begin() + 1; lm-- ){
-            backend_->uninstall_module(lm->id);
+        auto loaded = registry_.list_loaded();
+        for( auto lm = loaded.end() -1 ; lm != loaded.begin(); lm-- ){
+            if(backend_){
+                backend_->uninstall_module(lm->id);
+            }
             registry_.unload_module(lm->id);
         }
         module_    = nullptr;
         module_id_ = 0;
     }
 
-    void bindModule(int available_id) {
-        if (available_id == -1) {
-            LOG(_("engine: no module requested (id=-1)"));
+    void bindModule(size_t available_id) {
+        if (!backend_) {
+            LOG(_("engine: Cannot load module without backend"));
             return;
         }
-        int loaded_id = registry_.load_module(available_id);
-        if (loaded_id == -1) {
+        if (available_id == 65535) {
+            LOG(_("engine: no module requested (id=65535)"));
+            return;
+        }
+        auto asked_module=registry_.get_available_module_info(available_id);
+        if( asked_module.kind == ModuleKind::ComputeBackend ){
+            std::string msg = _("engine: cannot load ComputeBackend as module, requested id=");
+            msg += std::to_string(available_id);
+            LOG(msg);
+            return;
+        }
+        size_t loaded_id;
+        loaded_id = registry_.get_last_loaded_id() + 1;
+        if (!registry_.load_module(available_id)) {
             std::string msg = _("engine: cannot load module id=");
             msg += std::to_string(available_id);
             LOG(msg);
             return;
-        }
-
-        module_ = registry_.find_module(available_id);
+        }       
+        module_ = registry_.find_module(loaded_id);
         if (!module_) {
-            std::string msg = _("engine: find_module returned null for module id=");
+            std::string msg = _("engine: find_module returned null for module avaiblable id=");
             msg += std::to_string(available_id);
+            msg += _(" at position id=");
+            msg += std::to_string(loaded_id);
             LOG(msg);
             registry_.unload_module(loaded_id);
             return;
         }
-        module_id_ = available_id;
+        module_id_ = loaded_id;
 
-        if (!backend_ || !backend_->install_module(module_, ModuleKind::Suppression, 0)) {
+        if (!backend_ || !backend_->install_module(module_, static_cast<ModuleKind>(module_->info_c()->kind), 0) ) {
             std::string msg_err = error(__func__,
-                _("suppression module chain install failed"),
-                _("id=") + std::to_string(id));
+                _("Module install chainning failed"),
+                _("id=") + std::to_string(loaded_id));
             LOG_ERR(msg_err);
-            registry_.unload_module(ModuleKind::Suppression, id);
+            registry_.unload_module(loaded_id);
             module_    = nullptr;
             module_id_ = 0;
             return;
         }
 
-        std::string msg = _("engine: bound suppression module id=");
-        msg += std::to_string(id);
+        std::string msg = _("engine: bound module id=");
+        msg += std::to_string(module_id_);
         LOG(msg);
     }
 
     // -----------------------------------------------------------------------
     //  Membres
     // -----------------------------------------------------------------------
-    EngineCaps             caps_;
-    RuntimeConfig          cfg_;
-    detail::ModuleRegistry registry_;
+    EngineCaps      caps_;
+    RuntimeConfig   cfg_;
+    ModuleRegistry  registry_;
 
     BackendBase* backend_        = nullptr;  // pointeur non-owning (registry)
-    int          backend_id_     = -1;       // id du backend charge
-    ModuleBase*  module_    = nullptr;  // pointeur non-owning (registry)
-    int          module_id_ = 0;        // id du module de suppression charge
+    size_t       backend_id_     = 0;       // id du backend charge
+    ModuleBase*  module_         = nullptr;  // pointeur non-owning (registry)
+    size_t       module_id_      = 0;        // id du module de suppression charge
 
     // Cache des mesures -- mis a jour par callbacks depuis le backend, hors RT.
     // Lu par l'UI via latencyInfo() / processingStats() (retours const ref).
@@ -317,7 +333,7 @@ std::unique_ptr<Engine> createEngine(const EngineCaps& caps,
 }
 
 std::vector<ModuleInfo> availableBackends() {
-    detail::ModuleRegistry reg;
+    ModuleRegistry reg;
     reg.scan_modules(moduleDir());
     return reg.list_available(ModuleKind::ComputeBackend);
 }

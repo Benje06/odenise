@@ -61,9 +61,11 @@
         #include <getopt.h>   /* POSIX : absent du compilateur MSVC */
     #endif
 
+    #if defined(_WIN32) && !defined(__MINGW32__)
+        #define NOMINMAX
+    #endif
     #if defined(_WIN32) || defined(__MINGW32__)
         #define WIN32_LEAN_AND_MEAN
-        #define NOMINMAX
         #include <windows.h>
         #undef ERROR
         #undef IN

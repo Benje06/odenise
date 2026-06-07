@@ -34,11 +34,11 @@ namespace {
         LOG(msg);
 
         // Backends dynamiques (ComputeBackend)
-        const auto backends = odenise::availableBackends();
+        /*const auto backends = odenise::availableBackends();
         msg = _("compute backends modules found: ");
         msg += std::to_string(backends.size());
-        LOG(msg);
-
+        LOG(msg);*/
+        
         // Modules de suppression (dont passthrough)
         const auto sup = engine->modules(odenise::ModuleKind::Suppression);
         msg = _("suppression modules found: ");
@@ -50,7 +50,7 @@ namespace {
         return 0;
     }
 
-    /*int run_process_test(std::unique_ptr<odenise::Engine>& engine) {
+   /*int run_process_test(std::unique_ptr<odenise::Engine>& engine) {
         msg = _("=== test: process passthrough ===");
         LOG(msg);
 
@@ -149,7 +149,7 @@ namespace {
             msg += label;
             msg += "...";
             LOG(msg);
-            auto result = engine->selfTest(odenise::ModuleKind::ComputeBackend, b.id);
+            auto result = engine->selfTest(b.id);
             if (result.passed) {
                 msg = _("     PASS: ");
                 msg += result.detail;
@@ -184,7 +184,7 @@ namespace {
             msg += label;
             msg += "...";
             LOG(msg);
-            auto result = engine->selfTest(odenise::ModuleKind::Suppression, b.id);
+            auto result = engine->selfTest(b.id);
             if (result.passed) {
                 msg = _("     PASS: ");
                 msg += result.detail;
@@ -275,21 +275,21 @@ int main(int /*argc*/, char* /*argv*/[]) {
     try {
         int r = run_build_engine_test(engine);
         if (r != 0) return r;
-
-        /*r = run_load_chain_test(engine);
+        
+        r = run_load_chain_test(engine);
         if (r != 0) return r;
-
+        
         r = run_backend_test(engine);
         if (r != 0) return r;
 
         r = run_suppression_test(engine);
         if (r != 0) return r;
-        */
+
         /*r = run_process_test(engine);
         if (r != 0) return r;*/
 
-        /*r = run_latency_test(engine);
-        return r;*/
+        r = run_latency_test(engine);
+        return r;
     } catch (const std::exception& e) {
         std::string msg_err = error(__func__, _("unhandled exception"), e.what());
         LOG_ERR(msg_err);

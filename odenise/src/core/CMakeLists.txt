@@ -50,6 +50,7 @@ target_compile_features(odenise_core PUBLIC cxx_std_20)
 target_compile_definitions(odenise_core PRIVATE
     ODENISE_BUILD_LIBRARY=1
     LOGGER_EXPORTS=1
+    DEBUG_TOOL=1
     ODENISE_VERSION_DIR="${ODENISE_VERSION_DIR}")
 
 # libdl sous Linux
@@ -63,7 +64,7 @@ target_link_libraries(odenise_core PUBLIC odenise_log odenise_chain odenise_thre
 
 # Avertissements stricts, C++ uniquement (pas vers nvcc)
 if(MSVC)
-    target_compile_options(odenise_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4>)
+    target_compile_options(odenise_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zi /DEBUG>)
 else()
     target_compile_options(odenise_core PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>)

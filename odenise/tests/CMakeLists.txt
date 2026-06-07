@@ -1,6 +1,9 @@
 # tests/CMakeLists.txt -- harnais de test du coeur.
 add_executable(test_core main.cc)
-
+if(MSVC)
+    target_compile_options(test_core PRIVATE $<$<CONFIG:Debug>:/Zi>)
+    target_link_options(test_core PRIVATE $<$<CONFIG:Debug>:/DEBUG:FULL>)
+endif()
 target_link_libraries(test_core PRIVATE odenise_core)
 
 # ns_engine.h est expose via odenise_core PUBLIC (interfaces/).

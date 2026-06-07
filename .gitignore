@@ -1,1 +1,14 @@
 build/
+*.am
+*.ac
+*.nsi
+*.sh
+dx7*
+gxinter*
+Makefile*
+odenise/AUTHORS
+odenise/config.h.in
+COPYING
+ucrt64/minimal_ucrt64.txt
+odenise/src/seticon.rc
+ucrt64/ucrt64_pkg_list.txt

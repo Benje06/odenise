@@ -1,7 +1,7 @@
 // ============================================================================
 //  module_registry.cpp  --  Chargement dynamique portable des modules + registre.
 //
-//  Implemente odenise::detail::ModuleRegistry.
+//  Implemente odenise::ModuleRegistry.
 //
 //  Deux phases distinctes :
 //    1. scan_modules() : decouverte via probe temporaire (open/probe/close).
@@ -45,7 +45,7 @@
   }
 #endif
 
-namespace odenise::detail {
+namespace odenise {
 
 namespace {
 
@@ -239,7 +239,7 @@ const AvailableModule* ModuleRegistry::find_available(size_t module_id) const {
 // ---------------------------------------------------------------------------
 const LoadedModule* ModuleRegistry::find_loaded(size_t loaded_id) const {
     for (auto& l : loaded_)
-        if (l.info.id == loaded_id)
+        if (l.id == loaded_id)
             return &l;
     return nullptr;
 }
@@ -262,7 +262,7 @@ bool ModuleRegistry::load_module(size_t available_id) {
     if (!am) {
         std::string msg_err = error(__func__,
             _("load_module: module not available"),
-            std::string(" id=" + std::to_string(available_id));
+            std::string(" id=") + std::to_string(available_id));
         LOG_ERR(msg_err);
         return false;
     }
@@ -379,7 +379,7 @@ size_t ModuleRegistry::first_available_id(ModuleKind kind) const noexcept {
     for (const auto& a : available_)
         if (a.info.kind == kind)
             return a.info.id;
-    return 0;
+    return 65535;
 }
 
 // ---------------------------------------------------------------------------
@@ -398,19 +398,24 @@ std::vector<ModuleInfo> ModuleRegistry::list_available() const {
         out.push_back(a.info);
     return out;
 }
-
+ModuleInfo ModuleRegistry::get_available_module_info(size_t available_id) const {
+    for (const auto& a : available_)
+        if (a.info.id == available_id)
+            return a.info;
+    return {};
+}
 
 std::vector<LoadedModule> ModuleRegistry::list_loaded(ModuleKind kind) const {
     std::vector<LoadedModule> out;
     for (const auto& l : loaded_)
         if (l.info.kind == kind)
-            out.push_back(l.info);
+            out.push_back(l);
     return out;
 }
 std::vector<LoadedModule> ModuleRegistry::list_loaded() const {
     std::vector<LoadedModule> out;
     for (const auto& l : loaded_)
-            out.push_back(l.info);
+        out.push_back(l);
     return out;
 }
 
@@ -420,10 +425,17 @@ std::vector<LoadedModule> ModuleRegistry::list_loaded() const {
 TestResult ModuleRegistry::self_test(size_t available_id) {
     if (!load_module(available_id))
         return TestResult{ false, _("self_test: cannot load module") };
+    
+
     ModuleBase* module = find_module(loaded_.size() - 1);
     if (!module)
         return TestResult{ false, _("self_test: module not found after load") };
 
+    ModuleInfo module_info = get_available_module_info(available_id);
+    if ( module_info.description != module->info_c()->description 
+      || module_info.name != module->info_c()->name){
+        return TestResult{ false, _("self_test: module test will bnot be requested module") };
+    }
     const OdeniseTestResultC* r = module->self_test_c();
     TestResult out;
     if (!r) {

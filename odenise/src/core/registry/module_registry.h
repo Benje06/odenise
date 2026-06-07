@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace odenise::detail {
+namespace odenise {
 
 // ---------------------------------------------------------------------------
 //  AvailableModule -- metadonnees d'un module decouvert au scan.
@@ -98,6 +98,7 @@ public:
     // Modules decouverts pour un type ou tous (pour l'UI : propose ce qui est disponible).
     std::vector<ModuleInfo> list_available(ModuleKind kind) const;
     std::vector<ModuleInfo> list_available() const;
+    ModuleInfo get_available_module_info(size_t available_id) const; // return enmpty if not found
 
     // Modules actuellement charges pour un type ou tous (pour l'engine : ce qui est actif).
     std::vector<LoadedModule> list_loaded(ModuleKind kind) const;
@@ -106,18 +107,17 @@ public:
     // Retourne l'id du premier module disponible d'un kind, sans allocation.
     // Retourne -1 si aucun module de ce kind n'est disponible.
     size_t first_available_id(ModuleKind kind) const noexcept;
+    // -----------------------------------------------------------------------
+    //  
+    // -----------------------------------------------------------------------
+    size_t get_last_loaded_id() const noexcept { return loaded_.size() -1; }
 
     // -----------------------------------------------------------------------
     //  Self-test d'un module disponible.
     //  Charge temporairement si pas deja charge, execute le test, decharge.
     // -----------------------------------------------------------------------
     TestResult self_test(size_t loaded_id);
-
 private:
-    // Probe d'un fichier : lit les metadonnees via un objet temporaire (0,0).
-    // Retourne false si le fichier n'est pas un module odenise valide.
-    bool probe_file(const std::filesystem::path& file);
-
     // Trouve un AvailableModule par kind+id. Retourne nullptr si absent.
     const AvailableModule* find_available(ModuleKind kind, size_t available_id) const;
     const AvailableModule* find_available(size_t available_id) const;
@@ -125,9 +125,11 @@ private:
     // Trouve un LoadedModule par loaded_id. Retourne nullptr si absent.
     const LoadedModule* find_loaded(size_t loaded_id) const;
     const LoadedModule* find_loaded(ModuleKind kind) const;
-
+    // Probe d'un fichier : lit les metadonnees via un objet temporaire (0,0).
+    // Retourne false si le fichier n'est pas un module odenise valide.
+    bool probe_file(const std::filesystem::path& file);
     std::vector<AvailableModule> available_;  // modules decouverts, non charges
     std::vector<LoadedModule>    loaded_;     // modules charges, possedes par le registry
 };
 
-} // namespace odenise::detail
+} // namespace odenise

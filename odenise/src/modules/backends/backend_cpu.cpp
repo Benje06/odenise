@@ -77,12 +77,15 @@ public:
     explicit CpuBackendImpl(int sample_rate, int window_size_max)
         : sample_rate_(sample_rate)
         , window_size_max_(window_size_max)
-        , ctx_(window_size_max) {}
+        , ctx_(window_size_max) {
+            /*S_Thread();
+            S_Thread2();*/
+        }
 
     ~CpuBackendImpl() override {
         // Arrete les threads avant destruction.
-        T_Thread();
-        T_Thread2();
+        /*T_Thread2();
+        T_Thread();*/
     }
 
     // -----------------------------------------------------------------------
@@ -147,7 +150,7 @@ public:
             /* abi_version    */ odenise::kAbiVersion,
             /* id             */ 0,
             /* kind           */ static_cast<int>(odenise::ModuleKind::ComputeBackend),
-            /* name           */ "cpu",
+            /* name           */ "backend_cpu",
             /* description    */ "Backend de calcul CPU (repli, sans GPU)",
             /* needs_gpu      */ 0,
             /* backend_type_id*/ odenise::kBackendCPU
@@ -160,7 +163,7 @@ public:
     // -----------------------------------------------------------------------
     const OdeniseBackendCapsC* caps_c() const noexcept override {
         static const OdeniseBackendCapsC s_caps = {
-            /* name        */ "cpu",
+            /* name        */ "backend_cpu",
             /* is_gpu      */ 0,
             /* vram_bytes  */ 0,
             /* cc_major    */ 0,
@@ -196,8 +199,8 @@ public:
     void reconfigure(const odenise::EngineCaps& caps,
                      const odenise::RuntimeConfig& cfg) override {
         // Suspend les threads sans les detruire.
-        P_Thread();
-        P_Thread2();
+        /*P_Thread();
+        P_Thread2();*/
 
         sample_rate_        = caps.sample_rate;
         window_size_max_    = caps.window_size_max;
@@ -205,8 +208,8 @@ public:
         (void)cfg;  // sera utilise quand les modules exploiteront n, hop, etc.
 
         // Reprend Run2 avant Run : mesure prete avant le traitement RT.
-        R_Thread2();
-        R_Thread();
+        /*R_Thread2();
+        R_Thread();*/
     }
 
     // -----------------------------------------------------------------------
@@ -214,12 +217,12 @@ public:
     // -----------------------------------------------------------------------
     bool install_module(odenise::ModuleBase* mod,
                         odenise::ModuleKind  kind,
-                        int             position) override {
+                        size_t               position) override {
         if (!mod) return false;
-        const bool ok = chain_.install(this, &ctx_, mod, kind, position);
+        const bool ok = chain_.install(this, &ctx_, mod, kind);
         if (ok) {
-            first_module_ = mod;
-            last_module_  = mod;
+            first_module_ = chain_.get_first();
+            last_module_  = chain_.get_last();
             nodes_empty_  = false;
             last_latency_.declared_samples = chain_.declared_latency_samples();
         }
@@ -320,13 +323,13 @@ public:
     void   process(int) noexcept override {}
 
 private:
-    int                    sample_rate_;
-    int                    window_size_max_;
-    CpuBackendContext      ctx_;
+    int                         sample_rate_;
+    int                         window_size_max_;
+    CpuBackendContext           ctx_;
     odenise::chain::AudioChain  chain_;
     odenise::ModuleBase*        first_module_ = nullptr;
     odenise::ModuleBase*        last_module_  = nullptr;
-    bool                   nodes_empty_  = true;
+    bool                        nodes_empty_  = true;
 };
 
 // ============================================================================

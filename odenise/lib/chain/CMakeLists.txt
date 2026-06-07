@@ -38,7 +38,8 @@ target_include_directories(odenise_chain
 target_compile_features(odenise_chain PUBLIC cxx_std_20)
 target_compile_definitions(odenise_chain PRIVATE
     ODENISE_BUILD_LIBRARY=1
-    CHAIN_EXPORTS=1)
+    CHAIN_EXPORTS=1
+    DEBUG_TOOL=1)
 
 # Depend de odenise_log pour LOG/LOG_ERR dans audio_chain.cpp.
 target_link_libraries(odenise_chain PUBLIC odenise_log)

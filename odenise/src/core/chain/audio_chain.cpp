@@ -48,7 +48,7 @@ void AudioChain::exec_transfer_cpu(ChainElement& e, int /*num_frames*/) noexcept
 //  verifie que le backend peut fournir ce contexte.
 //  Retourne kBackendAny si le module accepte tout (le backend choisit).
 // ---------------------------------------------------------------------------
-int AudioChain::resolve_context(BackendBase*  backend,
+size_t AudioChain::resolve_context(BackendBase*  backend,
                                 ModuleBase*   mod) {
     // Le type de contexte est declare dans OdeniseModuleInfoC::backend_type_id.
     // A ce stade, on ne peut pas l'interroger via ModuleBase* seul -- c'est
@@ -61,7 +61,7 @@ int AudioChain::resolve_context(BackendBase*  backend,
     }else if ( bc->backend_type == mi->backend_type_id || mi->backend_type_id == kBackendAny ){
         return bc->backend_type;
     }else{
-        return -1;
+        return 0;
     }
 }
 
@@ -93,8 +93,8 @@ void AudioChain::rebuild(BackendBase* backend) {
 
         if (i > 0) {
             auto& prev = nodes_[i - 1];
-            const int prev_ctx = prev.ctx_type;
-            const int curr_ctx = node.ctx_type;
+            const size_t prev_ctx = prev.ctx_type;
+            const size_t curr_ctx = node.ctx_type;
 
             // Transition CPU -> GPU : H2D
             if (prev_ctx == kBackendCPU && curr_ctx == kBackendCUDA) {
@@ -182,9 +182,9 @@ bool AudioChain::insert(BackendBase*    backend,
     if (!mod) return false;
 
     // Determine le contexte du module.
-    const int ctx_type = resolve_context(backend, mod);
+    const size_t ctx_type = resolve_context(backend, mod);
     // unsupported mix
-    if (ctx_type == -1) return false;
+    if (ctx_type == 0) return false;
 
     // Installation sur le contexte backend : fournit le scratch buffer
     // et le stream de calcul au module via BackendContext.
