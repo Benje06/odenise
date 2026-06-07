@@ -2,6 +2,19 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "VST RUN",
+            "type": "shell",
+            "command": "D:/crosscompile/msys2/home/jerome/odenise/odenise/build/windows-msvc-cuda/AudioPluginHost/AudioPluginHost_artefacts/Debug/AudioPluginHost.exe",
+            "args": [
+            ],
+            "problemMatcher": [],
+            "group": "build",
+            "detail": "Run vst",
+            "options": {
+                "cwd": "${workspaceFolder}/odenise/build/windows-msvc-cuda/"
+            }
+        },
+        {
             "type": "cmake",
             "label": "CMake: build",
             "command": "build",

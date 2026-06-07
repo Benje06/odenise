@@ -108,19 +108,26 @@ endif()
 # ---------------------------------------------------------------------------
 #  JUCE (si plugin demande et present)
 # ---------------------------------------------------------------------------
-if(ODENISE_BUILD_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/CMakeLists.txt")
+if(ODENISE_BUILD_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/juce/CMakeLists.txt")
     include(FetchContent)
-    set(JUCE_TAG "8.0.4" CACHE STRING "Tag JUCE")
+    set(JUCE_TAG "8.0.13" CACHE STRING "Tag JUCE")
     FetchContent_Declare(juce
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
         GIT_TAG        ${JUCE_TAG}
         GIT_SHALLOW    TRUE)
     FetchContent_MakeAvailable(juce)
+    message(STATUS "juce_SOURCE_DIR = ${juce_SOURCE_DIR}")
+    message(STATUS "FETCHCONTENT_SOURCE_DIR_JUCE = ${FETCHCONTENT_SOURCE_DIR_JUCE}")
     set(ODENISE_PLUGIN_READY TRUE)
 else()
     set(ODENISE_PLUGIN_READY FALSE)
 endif()
 
+if(ODENISE_BUILD_PLUGIN AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_subdirectory(
+        ${juce_SOURCE_DIR}/extras/AudioPluginHost
+        ${CMAKE_BINARY_DIR}/AudioPluginHost)
+endif()
 # ---------------------------------------------------------------------------
 #  Sous-repertoires
 #  Ordre : libs utilitaires d'abord (odenise_log, odenise_chain, odenise_thread),
@@ -141,7 +148,7 @@ if(ODENISE_PLUGIN_READY)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/ui_shared/CMakeLists.txt")
         add_subdirectory(src/ui_shared)
     endif()
-    add_subdirectory(src/plugin)
+    add_subdirectory(src/plugin/juce)
 endif()
 
 if(ODENISE_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")

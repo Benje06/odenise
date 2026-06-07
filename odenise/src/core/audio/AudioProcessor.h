@@ -53,10 +53,10 @@ public:
     // -----------------------------------------------------------------------
     //  Construction / destruction
     // -----------------------------------------------------------------------
-    AudioProcessor();
-    explicit AudioProcessor(const EngineCaps& caps, const RuntimeConfig& cfg);
+    AUDIO AudioProcessor();
+    AUDIO explicit AudioProcessor(const EngineCaps& caps, const RuntimeConfig& cfg);
 
-    ~AudioProcessor() = default;
+    AUDIO ~AudioProcessor() = default;
 
     AudioProcessor(const AudioProcessor&)            = delete;
     AudioProcessor& operator=(const AudioProcessor&) = delete;
@@ -68,7 +68,7 @@ public:
     // [CTRL] Prepare la chaine (sample_rate, block_size).
     // Reconfigure l'engine et le backend.
     // TODO : Engine::reconfigure(EngineCaps, RuntimeConfig) a ajouter.
-    AUDIO bool prepare(int sample_rate, int block_size);
+    AUDIO bool prepare(double sample_rate, int block_size);
 
     // [CTRL] Cable les pointeurs audio sur le backend via engine.
     // TODO : Engine::setAudioIO(TrackIO) a ajouter.
@@ -111,7 +111,7 @@ public:
 private:
     std::unique_ptr<Engine> engine_;
     RuntimeConfig           cfg_;
-    int                     sample_rate_ = 0;
+    double                  sample_rate_ = 0;
     int                     block_size_  = 0;
 };
 

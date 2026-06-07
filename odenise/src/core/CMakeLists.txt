@@ -16,6 +16,8 @@
 set(ODENISE_CORE_SOURCES
     engine.cpp
     registry/module_registry.cpp
+    audio/AudioEditor.cpp
+    audio/AudioProcessor.cpp
 )
 
 add_library(odenise_core SHARED ${ODENISE_CORE_SOURCES})
@@ -49,7 +51,9 @@ target_compile_definitions(odenise_core PRIVATE
     ODENISE_BUILD_LIBRARY=1
     LOGGER_EXPORTS=1
     DEBUG_TOOL=1
-    ODENISE_VERSION_DIR="${ODENISE_VERSION_DIR}")
+    ODENISE_VERSION_DIR="${ODENISE_VERSION_DIR}"
+    AUDIO_EXPORTS
+)
 
 # libdl sous Linux
 if(UNIX AND NOT APPLE)

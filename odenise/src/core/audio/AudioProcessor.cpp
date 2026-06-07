@@ -27,7 +27,7 @@ AudioProcessor::AudioProcessor(const EngineCaps& caps, const RuntimeConfig& cfg)
 //  Cycle de vie audio
 // ----------------------------------------------------------------------------
 
-bool AudioProcessor::prepare(int sample_rate, int block_size) {
+bool AudioProcessor::prepare(double sample_rate, int block_size) {
     if (!engine_) {
         std::string msg_err = error(__func__,
             _("AudioProcessor: no engine"),

@@ -27,8 +27,8 @@ set(ODENISE_CORE_INTERFACES
 # que le coeur (GCC/UCRT64 pour CPU) -- jamais transmis a nvcc.
 set(ODENISE_CORE_INTERNAL
     ${CMAKE_SOURCE_DIR}/src/core
-    ${CMAKE_SOURCE_DIR}/src/core/tools
-    ${CMAKE_SOURCE_DIR}/src/core/chain)
+    ${CMAKE_SOURCE_DIR}/src/core/chain
+    ${CMAKE_SOURCE_DIR}/src/core/tools)
 
 # --- Passthrough (suppression neutre, validation de la chaine) ---------------
 add_library(passthrough MODULE suppression/passthrough.cpp)

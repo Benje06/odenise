@@ -59,6 +59,8 @@ struct AudioInterfaceInfo {
     int              max_input_channels;
     int              max_output_channels;
     std::vector<int> supported_sample_rates;
+    std::vector<int> supported_buffer_sizes;
+    int              current_bit_depth = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -68,8 +70,8 @@ class AudioEditor {
 public:
     // processor et son engine doivent rester valides pendant toute la duree
     // de vie d'AudioEditor.
-    explicit AudioEditor(AudioProcessor* processor);
-    ~AudioEditor() = default;
+    AUDIO explicit AudioEditor(AudioProcessor* processor);
+    AUDIO ~AudioEditor() = default;
 
     AudioEditor(const AudioEditor&)            = delete;
     AudioEditor& operator=(const AudioEditor&) = delete;

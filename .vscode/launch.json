@@ -4,7 +4,29 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
+        {
+            "name": "Debug VST3 (AudioPluginHost)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "D:/crosscompile/msys2/home/jerome/odenise/odenise/build/windows-msvc-cuda/AudioPluginHost/AudioPluginHost_artefacts/Debug/AudioPluginHost.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "internalConsole",
+            "symbolSearchPath": "${workspaceFolder}/build/windows-msvc-cuda"
+        },
+        {
+            "name": "VST3 (AudioPluginHost)",
+            "request": "launch",
+            "program": "D:/crosscompile/msys2/home/jerome/odenise/odenise/build/windows-msvc-cuda/AudioPluginHost/AudioPluginHost_artefacts/Debug/AudioPluginHost.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "internalConsole",
+            "symbolSearchPath": "${workspaceFolder}/build/windows-msvc-cuda"
+        },
         {
             "type": "cmake",
             "request": "launch",
