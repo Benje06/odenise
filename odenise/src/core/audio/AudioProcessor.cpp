@@ -61,15 +61,16 @@ bool AudioProcessor::setAudioIO(TrackIO io) {
         LOG_ERR(msg_err);
         return false;
     }
-    // TODO : engine_->setAudioIO(io) a ajouter dans Engine.
-    (void)io;
+    engine_->setAudioIO(io);
     return true;
 }
 
 // ----------------------------------------------------------------------------
 void AudioProcessor::release() {
     if (!engine_) return;
-    // TODO : engine_->release() a ajouter dans Engine.
+    // La suspension du backend est geree en interne par celui-ci lors des
+    // operations qui le necessitent (setAudioIO, reconfigure...).
+    // Aucun appel explicite de release() requis sur l'engine.
     std::string msg = _("AudioProcessor: released");
     LOG(msg);
 }

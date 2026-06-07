@@ -104,6 +104,17 @@ public:
         return {};
     }
 
+    void setAudioIO(TrackIO io) override {
+        if (!backend_) {
+            std::string msg_err = error(__func__,
+                _("engine: setAudioIO called without backend"),
+                _("ignored"));
+            LOG_ERR(msg_err);
+            return;
+        }
+        backend_->setAudioIO(io);
+    }
+
     /* Param to be set by the ui to the specialized module */
     Status setParam(ParamId id, float value) noexcept override {
         // TODO : real set param

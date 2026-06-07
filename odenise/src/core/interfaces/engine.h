@@ -506,6 +506,11 @@ public:
     virtual Status reconfigure(const RuntimeConfig& cfg,
                                ApplyResult& out_how) = 0;
 
+    // [CTRL] Cable les pointeurs audio de l'interface sur le backend.
+    // Appele par AudioProcessor apres prepare(). Le backend gere en interne
+    // la suspension de son thread de traitement si necessaire.
+    virtual void setAudioIO(TrackIO io) = 0;
+
     // [CTRL] capabilities du backend reellement actif (GTX vs RTX, VRAM...).
     virtual BackendCaps backendCaps() const = 0;
 
