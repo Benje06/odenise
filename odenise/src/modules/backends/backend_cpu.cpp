@@ -219,7 +219,7 @@ public:
                         odenise::ModuleKind  kind,
                         size_t               position) override {
         if (!mod) return false;
-        const bool ok = chain_.install(this, &ctx_, mod, kind);
+        const bool ok = chain_.insert(this, &ctx_, mod, kind, position);
         if (ok) {
             first_module_ = chain_.get_first();
             last_module_  = chain_.get_last();

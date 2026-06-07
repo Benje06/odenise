@@ -126,14 +126,14 @@ public:
                       BackendContext* ctx,
                       ModuleBase*     mod,
                       ModuleKind      kind,
-                      size_t             position);
+                      size_t          position);
 
     // Remplace le module a la position donnee.
     CHAIN bool replace(BackendBase*    backend,
                        BackendContext* ctx,
                        ModuleBase*     mod,
                        ModuleKind      kind,
-                       size_t             position);
+                       size_t          position);
 
     // Retire le module a la position donnee et recable les voisins.
     CHAIN void remove(BackendBase* backend, size_t position) noexcept;
