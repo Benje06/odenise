@@ -57,13 +57,13 @@
 // ===========================================================================
 
 struct OdeniseModuleInfoC {
-    int         abi_version;     // DOIT valoir odenise::kAbiVersion
-    int         id;
+    size_t      abi_version;     // DOIT valoir odenise::kAbiVersion
+    size_t      id;
     int         kind;            // valeur de odenise::ModuleKind
     const char* name;
     const char* description;
     int         needs_gpu;       // 0/1
-    int         backend_type_id; // odenise::kBackendAny, kBackendCPU, kBackendCUDA, ...
+    size_t      backend_type_id; // odenise::kBackendAny, kBackendCPU, kBackendCUDA, ...
                                  // ou valeur libre pour un backend tiers (>99)
 };
 
@@ -75,7 +75,7 @@ struct OdeniseBackendCapsC {
     int           cc_minor;
     int           has_fp16;
     int           has_tensor;
-    int           backend_type;
+    size_t        backend_type;
 };
 
 struct OdeniseTestResultC {
@@ -85,7 +85,7 @@ struct OdeniseTestResultC {
 
 namespace odenise {
 
-inline constexpr int kAbiVersion = 1;
+inline constexpr size_t kAbiVersion = 1;
 
 // ---------------------------------------------------------------------------
 //  Identifiants de type de backend (extensibles par les modules tiers).
@@ -94,10 +94,10 @@ inline constexpr int kAbiVersion = 1;
 //  Un backend tiers choisit un id libre (ex. 100, 200...) sans modifier ce
 //  fichier : le coeur fait correspondre module et backend par cet entier.
 // ---------------------------------------------------------------------------
-inline constexpr int kBackendAny  = 0;
-inline constexpr int kBackendCPU  = 1;
-inline constexpr int kBackendCUDA = 2;
-inline constexpr int kBackendROCm = 3;
+inline constexpr size_t kBackendAny  = 0;
+inline constexpr size_t kBackendCPU  = 1;
+inline constexpr size_t kBackendCUDA = 2;
+inline constexpr size_t kBackendROCm = 3;
 // reservez des plages > 99 pour les backends tiers
 
 // ---------------------------------------------------------------------------
@@ -172,26 +172,26 @@ enum class ParamId {
 //  dans le chemin temps reel. En sortir force le chemin froid.
 // ---------------------------------------------------------------------------
 struct EngineCaps {
-    int  sample_rate    = 48000;
-    int  n_max          = 4096;   // taille de fenetre max pre-allouee
-    int  max_bands      = 48;     // nb de bandes perceptives max
-    int  max_tracks     = 16;
-    int  max_block      = 2048;   // taille de bloc hote max (dim. rings)
-    bool prealloc_c2c   = false;  // autorise bascule R2C<->C2C a chaud
-    bool share_fft_work = true;   // workspace cuFFT unique partage
-    int  backend_id     = -1;     // -1 = AUTO ; sinon id du registre
+    int  sample_rate        = 48000;
+    int  window_size_max    = 4096;   // taille de fenetre max pre-allouee
+    int  max_bands          = 48;     // nb de bandes perceptives max
+    int  max_tracks         = 16;
+    int  max_block          = 2048;   // taille de bloc hote max (dim. rings)
+    bool prealloc_c2c       = false;  // autorise bascule R2C<->C2C a chaud
+    bool share_fft_work     = true;   // workspace cuFFT unique partage
+    size_t  backend_id      = 0;      // 0 = AUTO ; sinon id du registre
 };
 
 // ---------------------------------------------------------------------------
 //  Configuration d'execution (modifiable, a chaud dans l'enveloppe)
 // ---------------------------------------------------------------------------
 struct RuntimeConfig {
-    int     n              = 1024;   // <= n_max
+    int     window_size   = 1024;   // <= window_size
     int     hop            = 256;    // n/4 = 75 % de recouvrement
     float   window_ratio   = 1.0f;   // 1.0 = synthese symetrique ; <1 = asym.
     int     num_bands      = 32;     // <= max_bands
     FftMode fft_mode       = FftMode::R2C;
-    int     suppression_id = 0;
+    size_t  module_id      = 0;      // TODO: use audio_chain list
     int     window_id      = 0;
     int     dualmic_id     = 0;      // 0 = mono
 };
@@ -208,19 +208,19 @@ struct BackendCaps {
     int         cc_minor     = 0;
     bool        has_fp16     = false;
     bool        has_tensor   = false; // false sur Pascal -> chemin FP32
-    int         backend_type = kBackendAny; // identifiant du type de backend
+    size_t      backend_type = kBackendAny; // identifiant du type de backend
 };
 
 // ---------------------------------------------------------------------------
 //  Description d'un module (peuplement des listes UI)
 // ---------------------------------------------------------------------------
 struct ModuleInfo {
-    int         id               = 0;
+    size_t      id               = 0;
     ModuleKind  kind             = ModuleKind::Suppression;
     std::string name;
     std::string description;
     bool        needs_gpu        = false;
-    int         backend_type_id  = kBackendAny; // backend requis (kBackendAny = tous)
+    size_t      backend_type_id  = kBackendAny; // backend requis (kBackendAny = tous)
 };
 
 struct TestResult {                   // self-test embarque par chaque module
@@ -317,10 +317,10 @@ class BackendContext {
 public:
     virtual ~BackendContext() = default;
 
-    // [CTRL] Memoire de travail pre-allouee par le backend a N_max.
+    // [CTRL] Memoire de travail pre-allouee par le backend a window_size_max.
     // Le module y taille ses buffers internes a l'installation (hors RT).
     // Zéro allocation en RT.
-    virtual void*  scratch_buf(std::size_t bytes) noexcept = 0;
+    virtual void*  scratch_buf(size_t bytes) noexcept = 0;
 
     // [RT/CTRL] Contexte natif de la ressource de calcul.
     // CPU : nullptr ou pointeur vers un pool de threads.
@@ -427,10 +427,10 @@ public:
     // position = 0 : premier de la chaine.
     virtual bool install_module(ModuleBase* mod,
                                 ModuleKind  kind,
-                                int         position) = 0;
+                                size_t      position) = 0;
 
     // [CTRL] Retire un module de la chaine et recable les voisins.
-    virtual void uninstall_module(ModuleKind kind, int position) noexcept = 0;
+    virtual void uninstall_module(size_t position) noexcept = 0;
 
     // [CTRL] Reconfiguration structurelle du backend et de ses modules.
     // Appele par l'engine lors d'un reconfigure() ou au premier bind.
@@ -468,12 +468,12 @@ public:
 
     // [CTRL] Callbacks enregistres par l'engine pour recevoir les mesures.
     // Declenchés par le backend hors RT :
-    //   on_latency_changed : au cablage, pousse declared_samples + declared_ms.
-    //   on_stats_updated   : apres mesure, pousse ProcessingStats + measured_*.
+    //   on_declared_latency_changed : au cablage, pousse declared_samples + declared_ms.
+    //   on_latency_updated   : apres mesure, pousse ProcessingStats + measured_*.
     // Pointeurs bruts : pas de std::function (C4251 MSVC).
     // Passer nullptr pour desactiver.
-    void (*on_latency_changed)(void* user, int declared_samples) noexcept = nullptr;
-    void (*on_stats_updated)  (void* user,
+    void (*on_declared_latency_changed)(void* user, int declared_samples) noexcept = nullptr;
+    void (*on_latency_updated)  (void* user,
                                 const ProcessingStats& stats,
                                 int measured_samples) noexcept             = nullptr;
     void* callback_user = nullptr;  // contexte commun aux deux callbacks
@@ -531,8 +531,10 @@ public:
     // --- registre de modules --------------------------------------------
     // [CTRL] modules reellement charges pour une famille (peuple l'UI).
     virtual std::vector<ModuleInfo> modules(ModuleKind kind) const = 0;
+    // [CTRL] tous les modules reellement charges(peuple l'UI).
+    virtual std::vector<ModuleInfo> modules() const = 0;
     // [CTRL] execute le self-test embarque d'un module.
-    virtual TestResult selfTest(ModuleKind kind, int module_id) const = 0;
+    virtual TestResult selfTest(size_t module_id) const = 0;
 
     // --- mesures de performance -----------------------------------------
     // [CTRL] latence declaree + mesuree de la chaine courante.
@@ -568,7 +570,7 @@ ODENISE_API std::vector<ModuleInfo> availableBackends();
 //  Un module est un .so/.dll compile SEPAREMENT du coeur, eventuellement par
 //  un autre compilateur (GCC/UCRT64 pour CPU, MSVC+nvcc pour CUDA).
 //
-//  Principe : odenise_module_entry(sample_rate, n_max) retourne un ModuleBase*.
+//  Principe : odenise_module_entry(sample_rate, window_size_max) retourne un ModuleBase*.
 //  Pour ComputeBackend, l'objet implemente aussi BackendBase ; le loader
 //  le caste via dynamic_cast apres avoir lu info_c()->kind.
 //  Les structs POD (OdeniseModuleInfoC, OdeniseBackendCapsC, OdeniseTestResultC)
@@ -582,8 +584,8 @@ ODENISE_API std::vector<ModuleInfo> availableBackends();
 extern "C" {
 
 // Unique symbole exporte par chaque module (.so/.dll).
-// Le loader fait dlsym sur ce nom puis appelle entry(sample_rate, n_max).
-typedef odenise::ModuleBase* (*OdeniseModuleEntryFn)(int sample_rate, int n_max);
+// Le loader fait dlsym sur ce nom puis appelle entry(sample_rate, window_size_max).
+typedef odenise::ModuleBase* (*OdeniseModuleEntryFn)(int sample_rate, int window_size_max);
 
 #define ODENISE_MODULE_ENTRY_SYMBOL "odenise_module_entry"
 

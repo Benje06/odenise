@@ -16,6 +16,8 @@
 set(ODENISE_CORE_SOURCES
     engine.cpp
     registry/module_registry.cpp
+    audio/AudioEditor.cpp
+    audio/AudioProcessor.cpp
 )
 
 add_library(odenise_core SHARED ${ODENISE_CORE_SOURCES})
@@ -39,6 +41,7 @@ target_include_directories(odenise_core
         $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/audio
         ${CMAKE_CURRENT_SOURCE_DIR}/chain
         ${CMAKE_CURRENT_SOURCE_DIR}/tools
         ${CMAKE_CURRENT_SOURCE_DIR}/registry)

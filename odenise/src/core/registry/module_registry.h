@@ -45,6 +45,7 @@ struct LoadedModule {
     BackendBase*   backend = nullptr;  // non nul si kind == ComputeBackend
     ModuleInfo     info;               // copie des metadonnees
     std::string    path;               // chemin du .so/.dll
+    size_t         id;                 // position dans le vector loaded_
 };
 
 // ---------------------------------------------------------------------------
@@ -74,41 +75,43 @@ public:
     //  Chargement / dechargement
     // -----------------------------------------------------------------------
 
-    // Charge un module disponible (kind + id) : ouvre la lib, instancie
+    // Charge un module disponible (available_id) : ouvre la lib, instancie
     // l'objet avec (0,0), verifie le cast BackendBase si necessaire.
     // Retourne true si charge avec succes (ou deja charge).
-    bool load_module(ModuleKind kind, int id);
+    bool load_module(size_t available_id);
 
     // Decharge un module : detruit l'objet et ferme le handle.
     // Sans effet si le module n'est pas charge.
-    void unload_module(ModuleKind kind, int id) noexcept;
+    void unload_module(size_t loaded_id) noexcept;
 
     // -----------------------------------------------------------------------
     //  Acces aux modules charges (pointeurs non-owning).
     //  Retournent nullptr si le module n'est pas charge.
     // -----------------------------------------------------------------------
-    ModuleBase*  find_module(ModuleKind kind, int id) const;
-    BackendBase* find_backend(int id) const;
+    ModuleBase*  find_module(size_t loaded_id) const;
+    BackendBase* find_backend() const;
 
     // -----------------------------------------------------------------------
     //  Listes
     // -----------------------------------------------------------------------
 
-    // Modules decouverts (pour l'UI : propose ce qui est disponible).
+    // Modules decouverts pour un type ou tous (pour l'UI : propose ce qui est disponible).
     std::vector<ModuleInfo> list_available(ModuleKind kind) const;
+    std::vector<ModuleInfo> list_available() const;
 
-    // Modules actuellement charges (pour l'engine : ce qui est actif).
-    std::vector<ModuleInfo> list_loaded(ModuleKind kind) const;
+    // Modules actuellement charges pour un type ou tous (pour l'engine : ce qui est actif).
+    std::vector<LoadedModule> list_loaded(ModuleKind kind) const;
+    std::vector<LoadedModule> list_loaded() const;
 
     // Retourne l'id du premier module disponible d'un kind, sans allocation.
     // Retourne -1 si aucun module de ce kind n'est disponible.
-    int first_available_id(ModuleKind kind) const noexcept;
+    size_t first_available_id(ModuleKind kind) const noexcept;
 
     // -----------------------------------------------------------------------
     //  Self-test d'un module disponible.
     //  Charge temporairement si pas deja charge, execute le test, decharge.
     // -----------------------------------------------------------------------
-    TestResult self_test(ModuleKind kind, int id);
+    TestResult self_test(size_t loaded_id);
 
 private:
     // Probe d'un fichier : lit les metadonnees via un objet temporaire (0,0).
@@ -116,11 +119,12 @@ private:
     bool probe_file(const std::filesystem::path& file);
 
     // Trouve un AvailableModule par kind+id. Retourne nullptr si absent.
-    const AvailableModule* find_available(ModuleKind kind, int id) const;
+    const AvailableModule* find_available(ModuleKind kind, size_t available_id) const;
+    const AvailableModule* find_available(size_t available_id) const;
 
-    // Trouve un LoadedModule par kind+id. Retourne nullptr si absent.
-    LoadedModule* find_loaded(ModuleKind kind, int id);
-    const LoadedModule* find_loaded(ModuleKind kind, int id) const;
+    // Trouve un LoadedModule par loaded_id. Retourne nullptr si absent.
+    const LoadedModule* find_loaded(size_t loaded_id) const;
+    const LoadedModule* find_loaded(ModuleKind kind) const;
 
     std::vector<AvailableModule> available_;  // modules decouverts, non charges
     std::vector<LoadedModule>    loaded_;     // modules charges, possedes par le registry

@@ -6,7 +6,7 @@
 //
 //  Architecture :
 //    CpuBackendContext : BackendContext concret CPU.
-//      - scratch_buf() : buffer RAM pre-alloue a n_max * sizeof(float).
+//      - scratch_buf() : buffer RAM pre-alloue a window_size_max * sizeof(float).
 //      - compute_stream() : nullptr (CPU, pas de stream).
 //      - backend_type() : kBackendCPU.
 //
@@ -37,12 +37,12 @@
 // ============================================================================
 //  CpuBackendContext -- contexte de ressource CPU.
 //  Fourni par CpuBackendImpl a chaque module lors de l'installation.
-//  Possede le scratch buffer pre-alloue a n_max * sizeof(float).
+//  Possede le scratch buffer pre-alloue a window_size_max * sizeof(float).
 // ============================================================================
 class CpuBackendContext final : public odenise::BackendContext {
 public:
-    explicit CpuBackendContext(int n_max)
-        : scratch_(static_cast<std::size_t>(n_max) * sizeof(float), std::byte{0}) {}
+    explicit CpuBackendContext(int window_size_max)
+        : scratch_(static_cast<std::size_t>(window_size_max) * sizeof(float), std::byte{0}) {}
 
     // [CTRL] Retourne le debut du scratch buffer.
     void* scratch_buf(std::size_t /*bytes*/) noexcept override {
@@ -56,8 +56,8 @@ public:
     int   backend_type()   const noexcept override { return odenise::kBackendCPU; }
 
     // [CTRL] Redimensionne le scratch buffer (appele par reconfigure).
-    void resize(int n_max) {
-        const auto new_size = static_cast<std::size_t>(n_max) * sizeof(float);
+    void resize(int window_size_max) {
+        const auto new_size = static_cast<std::size_t>(window_size_max) * sizeof(float);
         if (scratch_.size() != new_size)
             scratch_.assign(new_size, std::byte{0});
     }
@@ -74,10 +74,10 @@ private:
 // ============================================================================
 class CpuBackendImpl final : public odenise::BackendBase, public odenise::ModuleBase {
 public:
-    explicit CpuBackendImpl(int sample_rate, int n_max)
+    explicit CpuBackendImpl(int sample_rate, int window_size_max)
         : sample_rate_(sample_rate)
-        , n_max_(n_max)
-        , ctx_(n_max) {}
+        , window_size_max_(window_size_max)
+        , ctx_(window_size_max) {}
 
     ~CpuBackendImpl() override {
         // Arrete les threads avant destruction.
@@ -199,9 +199,9 @@ public:
         P_Thread();
         P_Thread2();
 
-        sample_rate_ = caps.sample_rate;
-        n_max_       = caps.n_max;
-        ctx_.resize(n_max_);
+        sample_rate_        = caps.sample_rate;
+        window_size_max_    = caps.window_size_max;
+        ctx_.resize(window_size_max_);
         (void)cfg;  // sera utilise quand les modules exploiteront n, hop, etc.
 
         // Reprend Run2 avant Run : mesure prete avant le traitement RT.
@@ -226,7 +226,7 @@ public:
         return ok;
     }
 
-    void uninstall_module(odenise::ModuleKind kind, int position) noexcept override {
+    void uninstall_module(size_t position) noexcept override {
         chain_.remove(this, position);
         first_module_ = nullptr;
         last_module_  = nullptr;
@@ -250,7 +250,7 @@ public:
     // -----------------------------------------------------------------------
     //  setAudioIO -- set les entrée/sortie audio
     // -----------------------------------------------------------------------
-    void setAudioIO(TrackIO io) override {
+    void setAudioIO(odenise::TrackIO io) override {
         P_Thread();
         io_      = io;
         R_Thread();
@@ -264,8 +264,8 @@ public:
         std::mt19937 rng(42);
         std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
-        std::vector<float> in_buf(static_cast<std::size_t>(n_max_));
-        std::vector<float> out_buf(static_cast<std::size_t>(n_max_));
+        std::vector<float> in_buf(static_cast<std::size_t>(window_size_max_));
+        std::vector<float> out_buf(static_cast<std::size_t>(window_size_max_));
         for (auto& s : in_buf) s = dist(rng);
 
         const float* in_ptr = in_buf.data();
@@ -277,7 +277,7 @@ public:
 
         for (int i = 0; i < num_blocks; ++i) {
             const auto t0 = std::chrono::steady_clock::now();
-            process(&in_ptr, out_ptr, n_max_);
+            process(&in_ptr, out_ptr, window_size_max_);
             const auto t1 = std::chrono::steady_clock::now();
 
             const float ms = std::chrono::duration<float, std::milli>(t1 - t0).count();
@@ -288,7 +288,7 @@ public:
 
         const float mean_ms   = sum_ms / static_cast<float>(num_blocks);
         const float budget_ms = (sample_rate_ > 0)
-            ? (static_cast<float>(n_max_) / static_cast<float>(sample_rate_)) * 1000.0f
+            ? (static_cast<float>(window_size_max_) / static_cast<float>(sample_rate_)) * 1000.0f
             : 0.0f;
 
         last_stats_.min_ms    = min_ms;
@@ -321,7 +321,7 @@ public:
 
 private:
     int                    sample_rate_;
-    int                    n_max_;
+    int                    window_size_max_;
     CpuBackendContext      ctx_;
     odenise::chain::AudioChain  chain_;
     odenise::ModuleBase*        first_module_ = nullptr;
@@ -332,6 +332,6 @@ private:
 // ============================================================================
 //  Point d'entree du module.
 // ============================================================================
-extern "C" ODENISE_EXPORT odenise::ModuleBase* odenise_module_entry(int sample_rate, int n_max) {
-    return new (std::nothrow) CpuBackendImpl(sample_rate, n_max);
+extern "C" ODENISE_EXPORT odenise::ModuleBase* odenise_module_entry(int sample_rate, int window_size_max) {
+    return new (std::nothrow) CpuBackendImpl(sample_rate, window_size_max);
 }

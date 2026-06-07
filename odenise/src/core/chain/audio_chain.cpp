@@ -49,13 +49,20 @@ void AudioChain::exec_transfer_cpu(ChainElement& e, int /*num_frames*/) noexcept
 //  Retourne kBackendAny si le module accepte tout (le backend choisit).
 // ---------------------------------------------------------------------------
 int AudioChain::resolve_context(BackendBase*  backend,
-                                ModuleBase*   /*mod*/) {
+                                ModuleBase*   mod) {
     // Le type de contexte est declare dans OdeniseModuleInfoC::backend_type_id.
     // A ce stade, on ne peut pas l'interroger via ModuleBase* seul -- c'est
     // l'engine qui passe l'info lors de l'install (via ChainNode::ctx_type).
     // Cette fonction est un point d'extension pour la phase 3b (CUDA).
-    (void)backend;
-    return kBackendAny;
+    const OdeniseBackendCapsC *bc = backend->caps_c();
+    const OdeniseModuleInfoC *mi = mod->info_c();
+    if ( bc->backend_type == kBackendAny ){
+        return mi->backend_type_id;
+    }else if ( bc->backend_type == mi->backend_type_id || mi->backend_type_id == kBackendAny ){
+        return bc->backend_type;
+    }else{
+        return -1;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -160,12 +167,24 @@ void AudioChain::recalculate_latency() {
 bool AudioChain::install(BackendBase*    backend,
                          BackendContext* ctx,
                          ModuleBase*     mod,
-                         ModuleKind      kind,
-                         int             position) {
+                         ModuleKind      kind) {
+    return insert(backend, ctx, mod, kind, nodes_.size());
+}
+
+// ---------------------------------------------------------------------------
+//  insert -- alias semantique de install (insere sans remplacer).
+// ---------------------------------------------------------------------------
+bool AudioChain::insert(BackendBase*    backend,
+                        BackendContext* ctx,
+                        ModuleBase*     mod,
+                        ModuleKind      kind,
+                        size_t          position) {
     if (!mod) return false;
 
     // Determine le contexte du module.
     const int ctx_type = resolve_context(backend, mod);
+    // unsupported mix
+    if (ctx_type == -1) return false;
 
     // Installation sur le contexte backend : fournit le scratch buffer
     // et le stream de calcul au module via BackendContext.
@@ -185,31 +204,15 @@ bool AudioChain::install(BackendBase*    backend,
     node.position = position;
     node.ctx_type = ctx_type;
 
-    // Tri par position pour garantir l'ordre.
-    auto it = std::lower_bound(nodes_.begin(), nodes_.end(), node,
-        [](const ChainNode& a, const ChainNode& b) {
-            return a.position < b.position;
-        });
+    auto it = nodes_.begin() + position;
     nodes_.insert(it, node);
+    // Mettre à jour tous les positions = index
+    for (size_t i = 0; i < nodes_.size(); ++i) {
+        nodes_[i].position = i;
+    }
 
     rebuild(backend);
     return true;
-}
-
-// ---------------------------------------------------------------------------
-//  insert -- alias semantique de install (insere sans remplacer).
-// ---------------------------------------------------------------------------
-bool AudioChain::insert(BackendBase*    backend,
-                        BackendContext* ctx,
-                        ModuleBase*     mod,
-                        ModuleKind      kind,
-                        int             position) {
-    // Decale les positions des noeuds existants a partir de 'position'.
-    for (auto& n : nodes_)
-        if (n.position >= position)
-            ++n.position;
-
-    return install(backend, ctx, mod, kind, position);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,28 +222,23 @@ bool AudioChain::replace(BackendBase*    backend,
                          BackendContext* ctx,
                          ModuleBase*     mod,
                          ModuleKind      kind,
-                         int             position) {
-    // Retire l'ancien module a cette position s'il existe.
-    auto it = std::find_if(nodes_.begin(), nodes_.end(),
-        [position](const ChainNode& n) { return n.position == position; });
+                         size_t          position) {
 
+    auto it = nodes_.begin() + position;
     if (it != nodes_.end()) {
         it->module->uninstall(nullptr);
         nodes_.erase(it);
     }
 
-    return install(backend, ctx, mod, kind, position);
+    return insert(backend, ctx, mod, kind, position);
 }
 
 // ---------------------------------------------------------------------------
 //  remove -- retire le module a la position donnee.
 // ---------------------------------------------------------------------------
-void AudioChain::remove(BackendBase* backend, int position) noexcept {
-    auto it = std::find_if(nodes_.begin(), nodes_.end(),
-        [position](const ChainNode& n) { return n.position == position; });
-
+void AudioChain::remove(BackendBase* backend, size_t position) noexcept {
+    auto it = nodes_.begin() + position;
     if (it == nodes_.end()) return;
-
     it->module->uninstall(nullptr);
     nodes_.erase(it);
 

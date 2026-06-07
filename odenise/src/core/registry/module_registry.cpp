@@ -219,47 +219,50 @@ int ModuleRegistry::scan_modules(const std::filesystem::path& dir) {
 }
 
 // ---------------------------------------------------------------------------
-//  find_available -- cherche dans available_ par kind + id.
+//  find_available -- cherche dans available_ par kind + id. ou par id
 // ---------------------------------------------------------------------------
-const AvailableModule* ModuleRegistry::find_available(ModuleKind kind, int id) const {
+const AvailableModule* ModuleRegistry::find_available(ModuleKind kind, size_t module_id) const {
     for (const auto& a : available_)
-        if (a.info.kind == kind && a.info.id == id)
+        if (a.info.kind == kind && a.info.id == module_id)
+            return &a;
+    return nullptr;
+}
+const AvailableModule* ModuleRegistry::find_available(size_t module_id) const {
+    for (const auto& a : available_)
+        if (a.info.id == module_id)
             return &a;
     return nullptr;
 }
 
 // ---------------------------------------------------------------------------
-//  find_loaded -- cherche dans loaded_ par kind + id.
+//  find_loaded -- cherche dans loaded_ par kind + id. ou par id 
 // ---------------------------------------------------------------------------
-LoadedModule* ModuleRegistry::find_loaded(ModuleKind kind, int id) {
+const LoadedModule* ModuleRegistry::find_loaded(size_t loaded_id) const {
     for (auto& l : loaded_)
-        if (l.info.kind == kind && l.info.id == id)
+        if (l.info.id == loaded_id)
+            return &l;
+    return nullptr;
+}
+const LoadedModule* ModuleRegistry::find_loaded(ModuleKind kind) const {
+    for (auto& l : loaded_)
+        if (l.info.kind == kind)
             return &l;
     return nullptr;
 }
 
-const LoadedModule* ModuleRegistry::find_loaded(ModuleKind kind, int id) const {
-    for (const auto& l : loaded_)
-        if (l.info.kind == kind && l.info.id == id)
-            return &l;
-    return nullptr;
-}
 
 // ---------------------------------------------------------------------------
 //  load_module -- phase 2 : charge un module disponible.
 //  Rouvre la lib, instancie l'objet definitif avec (0,0), stocke dans loaded_.
 //  Sans effet (retourne true) si deja charge.
 // ---------------------------------------------------------------------------
-bool ModuleRegistry::load_module(ModuleKind kind, int id) {
-    // Deja charge : rien a faire.
-    if (find_loaded(kind, id))
-        return true;
+bool ModuleRegistry::load_module(size_t available_id) {
 
-    const AvailableModule* am = find_available(kind, id);
+    const AvailableModule* am = find_available(available_id);
     if (!am) {
         std::string msg_err = error(__func__,
             _("load_module: module not available"),
-            std::string(_("kind=")) + kindName(kind) + _(" id=") + std::to_string(id));
+            std::string(" id=" + std::to_string(available_id));
         LOG_ERR(msg_err);
         return false;
     }
@@ -296,7 +299,7 @@ bool ModuleRegistry::load_module(ModuleKind kind, int id) {
 
     // Pour ComputeBackend : cast vers BackendBase*.
     BackendBase* backend = nullptr;
-    if (kind == ModuleKind::ComputeBackend) {
+    if (am->info.kind == ModuleKind::ComputeBackend) {
         backend = dynamic_cast<BackendBase*>(module);
         if (!backend) {
             std::string msg_err = error(__func__,
@@ -310,15 +313,17 @@ bool ModuleRegistry::load_module(ModuleKind kind, int id) {
     }
 
     LoadedModule lm;
+    // TODO lm.info_id or lm_id must differt from am_info_id
     lm.handle  = handle;
     lm.module  = module;
     lm.backend = backend;
     lm.info    = am->info;
     lm.path    = am->path;
+    lm.id      = loaded_.size();
     loaded_.push_back(std::move(lm));
 
     std::string msg = _("loader: loaded [");
-    msg += kindName(kind);
+    msg += kindName(am->info.kind);
     msg += _("] '");
     msg += am->info.name;
     msg += "'";
@@ -329,16 +334,20 @@ bool ModuleRegistry::load_module(ModuleKind kind, int id) {
 // ---------------------------------------------------------------------------
 //  unload_module -- decharge un module : detruit l'objet, ferme le handle.
 // ---------------------------------------------------------------------------
-void ModuleRegistry::unload_module(ModuleKind kind, int id) noexcept {
-    for (auto it = loaded_.begin(); it != loaded_.end(); ++it) {
-        if (it->info.kind == kind && it->info.id == id) {
-            delete it->module;
-            it->module  = nullptr;
-            it->backend = nullptr;
-            dl_close(it->handle);
-            it->handle = nullptr;
-            loaded_.erase(it);
-
+void ModuleRegistry::unload_module(size_t loaded_id) noexcept {
+    for (auto lm = loaded_.begin(); lm != loaded_.end(); ++lm) {
+        if (lm->id == loaded_id) {
+            auto kind = lm->info.kind;
+            auto id = lm->id;
+            delete lm->module;
+            lm->module  = nullptr;
+            lm->backend = nullptr;
+            dl_close(lm->handle);
+            lm->handle = nullptr;
+            lm = loaded_.erase(lm);
+            for ( auto lmrest = lm; lmrest != loaded_.end(); ++lmrest) {
+                lmrest->id = lmrest->id - 1;
+            }
             std::string msg = _("loader: unloaded [");
             msg += kindName(kind);
             msg += _("] id=");
@@ -352,25 +361,25 @@ void ModuleRegistry::unload_module(ModuleKind kind, int id) noexcept {
 // ---------------------------------------------------------------------------
 //  find_module / find_backend -- acces non-owning aux modules charges.
 // ---------------------------------------------------------------------------
-ModuleBase* ModuleRegistry::find_module(ModuleKind kind, int id) const {
-    const LoadedModule* lm = find_loaded(kind, id);
+ModuleBase* ModuleRegistry::find_module(size_t loaded_id) const {
+    const LoadedModule* lm = find_loaded(loaded_id);
     return lm ? lm->module : nullptr;
 }
 
-BackendBase* ModuleRegistry::find_backend(int id) const {
-    const LoadedModule* lm = find_loaded(ModuleKind::ComputeBackend, id);
+BackendBase* ModuleRegistry::find_backend() const {
+    const LoadedModule* lm = find_loaded(ModuleKind::ComputeBackend);
     return lm ? lm->backend : nullptr;
 }
 
 // ---------------------------------------------------------------------------
 //  first_available_id -- retourne l'id du premier module disponible d'un kind.
-//  Sans allocation. Retourne -1 si aucun module de ce kind n'est disponible.
+//  Sans allocation. Retourne 0 si aucun module de ce kind n'est disponible.
 // ---------------------------------------------------------------------------
-int ModuleRegistry::first_available_id(ModuleKind kind) const noexcept {
+size_t ModuleRegistry::first_available_id(ModuleKind kind) const noexcept {
     for (const auto& a : available_)
         if (a.info.kind == kind)
             return a.info.id;
-    return -1;
+    return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -383,11 +392,24 @@ std::vector<ModuleInfo> ModuleRegistry::list_available(ModuleKind kind) const {
             out.push_back(a.info);
     return out;
 }
-
-std::vector<ModuleInfo> ModuleRegistry::list_loaded(ModuleKind kind) const {
+std::vector<ModuleInfo> ModuleRegistry::list_available() const {
     std::vector<ModuleInfo> out;
+    for (const auto& a : available_)
+        out.push_back(a.info);
+    return out;
+}
+
+
+std::vector<LoadedModule> ModuleRegistry::list_loaded(ModuleKind kind) const {
+    std::vector<LoadedModule> out;
     for (const auto& l : loaded_)
         if (l.info.kind == kind)
+            out.push_back(l.info);
+    return out;
+}
+std::vector<LoadedModule> ModuleRegistry::list_loaded() const {
+    std::vector<LoadedModule> out;
+    for (const auto& l : loaded_)
             out.push_back(l.info);
     return out;
 }
@@ -395,13 +417,10 @@ std::vector<ModuleInfo> ModuleRegistry::list_loaded(ModuleKind kind) const {
 // ---------------------------------------------------------------------------
 //  self_test -- charge temporairement si necessaire, execute, decharge.
 // ---------------------------------------------------------------------------
-TestResult ModuleRegistry::self_test(ModuleKind kind, int id) {
-    const bool was_loaded = (find_loaded(kind, id) != nullptr);
-
-    if (!was_loaded && !load_module(kind, id))
+TestResult ModuleRegistry::self_test(size_t available_id) {
+    if (!load_module(available_id))
         return TestResult{ false, _("self_test: cannot load module") };
-
-    ModuleBase* module = find_module(kind, id);
+    ModuleBase* module = find_module(loaded_.size() - 1);
     if (!module)
         return TestResult{ false, _("self_test: module not found after load") };
 
@@ -414,9 +433,7 @@ TestResult ModuleRegistry::self_test(ModuleKind kind, int id) {
         out.detail = r->detail ? r->detail : "";
     }
 
-    // Decharge si on l'a charge uniquement pour le test.
-    if (!was_loaded)
-        unload_module(kind, id);
+    unload_module(loaded_.size() - 1);
 
     return out;
 }

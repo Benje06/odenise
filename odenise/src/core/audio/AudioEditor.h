@@ -2,17 +2,25 @@
 //  src/core/audio/AudioEditor.h  --  Logique UI odenise.
 //
 //  Independante de JUCE, gtkmm et de tout framework graphique.
-//  Delegue a Engine (via AudioProcessor) pour toutes les operations :
-//    - liste backends/modules   : engine->modules(kind)
-//    - configuration chaine     : AudioProcessor -> Engine -> BackendBase
-//    - monitoring               : engine->latencyInfo() / processingStats()
-//  AudioEditor ne connait ni BackendBase ni ModuleBase directement.
+//  Ne connait ni BackendBase ni ModuleBase directement.
+//
+//  Acces :
+//    listes disponibles    -> engine_->modules(kind) / backendCaps()
+//    configuration chaine  -> processor_ -> Engine -> BackendBase -> chaine
+//    monitoring            -> engine_ (cache mis a jour par poll())
+//
+//  Identifiants :
+//    available_id : id dans registry.available_ (insert, replace)
+//    loaded_id    : id dans registry.loaded_     (reconfigure)
+//    position     : rang dans la chaine (remove)
+//
+//  La chaine est unique -- tous les kinds coexistent dans la meme chaine.
+//  Le kind est une metadonnee du module, pas un axe d'organisation.
 // ============================================================================
 #pragma once
 
 #include "engine.h"
 
-#include <cstring>
 #include <string>
 #include <vector>
 
@@ -37,7 +45,8 @@ struct AudioInterfaceInfo {
 // ---------------------------------------------------------------------------
 class AudioEditor {
 public:
-    // processor doit rester valide pendant toute la duree de vie d'AudioEditor.
+    // processor et son engine doivent rester valides pendant toute la duree
+    // de vie d'AudioEditor.
     explicit AudioEditor(AudioProcessor* processor);
     ~AudioEditor() = default;
 
@@ -54,35 +63,31 @@ public:
     int  selectedAudioInterfaceId() const noexcept { return selected_interface_id_; }
 
     // -----------------------------------------------------------------------
-    //  Backend -- liste depuis engine->modules(ComputeBackend).
-    //  selectBackend() reconfigure l'engine.
+    //  Backend -- selectionne depuis registry.available_.
     // -----------------------------------------------------------------------
-    bool selectBackend(int id);
+    bool selectBackend(int available_id);
     int  selectedBackendId() const noexcept { return selected_backend_id_; }
 
     // -----------------------------------------------------------------------
-    //  Modules -- liste depuis engine->modules(kind).
-    //  selectModule() installe le module via AudioProcessor.
-    //  id=0 pour Suppression = delie le module (aucun).
+    //  Module -- selectionne depuis registry.available_.
+    //  Equivalent a insertModule en derniere position avec config par defaut.
     // -----------------------------------------------------------------------
-    bool selectModule(ModuleKind kind, int id);
-    int  selectedModuleId(ModuleKind kind) const noexcept;
+    bool selectModule(int available_id, const RuntimeConfig& cfg);
+    int  selectedModuleId() const noexcept { return selected_module_id_; }
 
     // -----------------------------------------------------------------------
-    //  Configuration de la chaine audio
-    //  Delegue a AudioProcessor -> Engine -> BackendBase.
+    //  Configuration de la chaine (unique, tous kinds confondus).
+    //  Delegue a AudioProcessor -> Engine -> BackendBase -> chaine.
+    //
+    //  insert  : charge depuis available_, deplace et insere a la position.
+    //  replace : charge depuis available_, remplace le module a la position.
+    //  remove  : retire le module a la position, le decharge de loaded_.
+    //  reconfigure : reconfigure un module loaded_ par son loaded_id.
     // -----------------------------------------------------------------------
-    bool installModule(ModuleKind kind, int module_id,
-                       int position, const RuntimeConfig& cfg);
-    bool insertModule (ModuleKind kind, int module_id,
-                       int position, const RuntimeConfig& cfg);
-    bool replaceModule(ModuleKind kind, int module_id,
-                       int position, const RuntimeConfig& cfg);
-    void removeModule (ModuleKind kind, int position);
-
-    // Reconfigure un module specifique par son id.
-    // cfg peut etre une sous-classe de RuntimeConfig (cast dans le module).
-    bool reconfigureModule(int module_id, const RuntimeConfig& cfg);
+    bool insertModule    (int available_id, int position, const RuntimeConfig& cfg);
+    bool replaceModule   (int available_id, int position, const RuntimeConfig& cfg);
+    void removeModule    (int position);
+    bool reconfigureModule(int loaded_id,                 const RuntimeConfig& cfg);
 
     // -----------------------------------------------------------------------
     //  Monitoring -- cache local mis a jour par poll().
@@ -95,23 +100,20 @@ public:
     // Rafraichit le cache et declenche on_stats_changed si changement.
     void poll();
 
-    // Callback declenche par poll() quand les stats ont change.
-    // Le wrapper (JUCE/gtkmm) branche son repaint ici.
+   // Le wrapper (JUCE/gtkmm) branche son repaint ici.
     // Pointeur brut : pas de std::function (portabilite ABI).
     void (*on_stats_changed)(void* user) = nullptr;
     void*  on_stats_changed_user         = nullptr;
 
 private:
-    AudioProcessor* processor_;  // non-owning, possede par le wrapper
+    AudioProcessor* processor_;  // non-owning
+    Engine*         engine_;     // non-owning, cache depuis processor_->engine()
 
     std::vector<AudioInterfaceInfo> interfaces_;
     int selected_interface_id_ = -1;
     int selected_backend_id_   = -1;
+    int selected_module_id_    = -1;
 
-    // Index = static_cast<int>(ModuleKind). Valeur 0 = aucun module selectionne.
-    std::vector<int> selected_module_ids_;
-
-    // Cache local -- compare a poll() pour detecter les changements.
     LatencyInfo     cached_latency_;
     ProcessingStats cached_stats_;
 };

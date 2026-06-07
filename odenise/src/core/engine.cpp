@@ -40,16 +40,16 @@ std::filesystem::path moduleDir() {
     return exeDir() / ".." / "share" / ODENISE_VERSION_DIR / "modules";
 }
 
-BackendCaps toBackendCaps(const OdeniseBackendCapsC& c) {
+BackendCaps toBackendCaps(const OdeniseBackendCapsC& b_caps) {
     BackendCaps bc;
-    bc.name         = c.name ? c.name : "";
-    bc.is_gpu       = (c.is_gpu != 0);
-    bc.vram_bytes   = static_cast<std::size_t>(c.vram_bytes);
-    bc.cc_major     = c.cc_major;
-    bc.cc_minor     = c.cc_minor;
-    bc.has_fp16     = (c.has_fp16 != 0);
-    bc.has_tensor   = (c.has_tensor != 0);
-    bc.backend_type = c.backend_type;
+    bc.name         = b_caps.name ? b_caps.name : "";
+    bc.is_gpu       = (b_caps.is_gpu != 0);
+    bc.vram_bytes   = static_cast<std::size_t>(b_caps.vram_bytes);
+    bc.cc_major     = b_caps.cc_major;
+    bc.cc_minor     = b_caps.cc_minor;
+    bc.has_fp16     = (b_caps.has_fp16 != 0);
+    bc.has_tensor   = (b_caps.has_tensor != 0);
+    bc.backend_type = b_caps.backend_type;
     return bc;
 }
 
@@ -60,32 +60,32 @@ public:
 
         // Decouverte des modules disponibles (sans chargement).
         const auto dir = moduleDir();
-        const int n = registry_.scan_modules(dir);
+        const int nb_module = registry_.scan_modules(dir);
         std::string msg = _("engine: created (n=");
-        msg += std::to_string(cfg_.n);
+        msg += std::to_string(cfg_.window_size);
         msg += _(", modules available: ");
-        msg += std::to_string(n);
+        msg += std::to_string(nb_module);
         msg += ")";
         LOG(msg);
 
         // Chargement et liaison par couche : backend d'abord, modules ensuite.
         bindBackend(caps_.backend_id);
-        bindSuppression(cfg_.suppression_id);
+        bindModule(cfg_.module_id);
     }
 
     ~EngineImpl() override {
         // Liberation en ordre inverse. Les objets sont possedes par le registry.
-        releaseSuppression();
+        releaseAllModule();
         releaseBackend();
     }
 
     int latencySamples() const noexcept override {
         return cached_latency_.declared_samples > 0
-            ? cached_latency_.declared_samples : cfg_.n;
+            ? cached_latency_.declared_samples : cfg_.window_size;
     }
 
     Status reconfigure(const RuntimeConfig& cfg, ApplyResult& how) override {
-        const bool sup_changed = (cfg.suppression_id != cfg_.suppression_id);
+        const bool sup_changed = (cfg.module_id != cfg_.module_id);
         cfg_ = cfg;
         how  = ApplyResult::Hot;
 
@@ -93,7 +93,7 @@ public:
             backend_->reconfigure(caps_, cfg_);
 
         if (sup_changed)
-            bindSuppression(cfg_.suppression_id);
+            bindModule(cfg_.module_id);
 
         return Status::Ok;
     }
@@ -104,7 +104,9 @@ public:
         return {};
     }
 
+    /* Param to be set by the ui to the specialized module */
     Status setParam(ParamId id, float value) noexcept override {
+        // TODO : real set param
         (void)id; (void)value;
         return Status::Ok;
     }
@@ -114,6 +116,7 @@ public:
 
     Status captureBegin(ProfileLevel, float) override { return Status::Unsupported; }
     bool   captureActive() const noexcept override { return false; }
+
     std::vector<std::byte> saveProfile(ProfileLevel) const override { return {}; }
     Status loadProfile(ProfileLevel, std::span<const std::byte>) override {
         return Status::Unsupported;
@@ -122,9 +125,12 @@ public:
     std::vector<ModuleInfo> modules(ModuleKind kind) const override {
         return registry_.list_available(kind);
     }
+    std::vector<ModuleInfo> modules() const override {
+        return registry_.list_available();
+    }
 
-    TestResult selfTest(ModuleKind kind, int id) const override {
-        return const_cast<EngineImpl*>(this)->registry_.self_test(kind, id);
+    TestResult selfTest(size_t available_id) const override {
+        return const_cast<EngineImpl*>(this)->registry_.self_test(available_id);
     }
 
     // Retourne une ref sur le membre mis a jour par callback depuis le backend.
@@ -141,7 +147,7 @@ private:
     // -----------------------------------------------------------------------
 
     // Declenche par le backend au cablage : met a jour declared_* de cached_latency_.
-    static void on_latency_changed(void* user, int declared_samples) noexcept {
+    static void on_declared_latency_changed(void* user, int declared_samples) noexcept {
         auto* self = static_cast<EngineImpl*>(user);
         self->cached_latency_.declared_samples = declared_samples;
         self->cached_latency_.declared_ms =
@@ -153,7 +159,7 @@ private:
 
     // Declenche par le backend apres mesure : met a jour cached_stats_
     // et measured_* de cached_latency_.
-    static void on_stats_updated(void* user,
+    static void on_latency_updated(void* user,
                                  const ProcessingStats& stats,
                                  int measured_samples) noexcept {
         auto* self = static_cast<EngineImpl*>(user);
@@ -174,46 +180,46 @@ private:
     void releaseBackend() {
         if (backend_) {
             // Debranche les callbacks avant dechargement.
-            backend_->on_latency_changed = nullptr;
-            backend_->on_stats_updated   = nullptr;
-            backend_->callback_user      = nullptr;
-            registry_.unload_module(ModuleKind::ComputeBackend, backend_id_);
+            backend_->on_declared_latency_changed = nullptr;
+            backend_->on_latency_updated          = nullptr;
+            backend_->callback_user               = nullptr;
+            registry_.unload_module(backend_id_);
             backend_    = nullptr;
-            backend_id_ = -1;
+            backend_id_ = 0;
         }
     }
 
-    void bindBackend(int id) {
+    void bindBackend(size_t available_id) {
         releaseBackend();
 
-        // AUTO (-1) : premier ComputeBackend disponible.
-        if (id < 0) {
-            id = registry_.first_available_id(ModuleKind::ComputeBackend);
-            if (id < 0) {
+        // AUTO (0) : premier ComputeBackend disponible.
+        if (available_id == 0) {
+            available_id = registry_.first_available_id(ModuleKind::ComputeBackend);
+            if (available_id == 0) {
                 LOG(_("engine: no compute backend available"));
                 return;
             }
         }
 
-        if (!registry_.load_module(ModuleKind::ComputeBackend, id)) {
+        if (!registry_.load_module(available_id)) {
             std::string msg = _("engine: cannot load backend id=");
-            msg += std::to_string(id);
+            msg += std::to_string(available_id);
             LOG(msg);
             return;
         }
 
-        backend_ = registry_.find_backend(id);
+        backend_ = registry_.find_backend();
         if (!backend_) {
             std::string msg = _("engine: find_backend returned null for id=");
-            msg += std::to_string(id);
+            msg += std::to_string(available_id);
             LOG(msg);
             return;
         }
-        backend_id_ = id;
+        backend_id_ = available_id;
 
         // Enregistre les callbacks avant reconfigure().
-        backend_->on_latency_changed = &EngineImpl::on_latency_changed;
-        backend_->on_stats_updated   = &EngineImpl::on_stats_updated;
+        backend_->on_declared_latency_changed = &EngineImpl::on_declared_latency_changed;
+        backend_->on_latency_updated   = &EngineImpl::on_latency_updated;
         backend_->callback_user      = this;
 
         // Reconfigure avec les caps et cfg reelles.
@@ -221,7 +227,7 @@ private:
         backend_->reconfigure(caps_, cfg_);
 
         std::string msg = _("engine: bound backend id=");
-        msg += std::to_string(id);
+        msg += std::to_string(available_id);
         msg += _(" name='");
         msg += (backend_->caps_c()->name ? backend_->caps_c()->name : "");
         msg += "'";
@@ -229,51 +235,54 @@ private:
     }
 
     // -----------------------------------------------------------------------
-    //  Gestion du module de suppression
+    //  Gestion du module
     // -----------------------------------------------------------------------
-    void releaseSuppression() {
-        if (suppression_) {
-            if (backend_)
-                backend_->uninstall_module(ModuleKind::Suppression, 0);
-            registry_.unload_module(ModuleKind::Suppression, suppression_id_);
-            suppression_    = nullptr;
-            suppression_id_ = 0;
+    void releaseModule(size_t loaded_id) {
+        backend_->uninstall_module(loaded_id);
+        registry_.unload_module(loaded_id);
+        module_    = nullptr;
+        module_id_ = 0;
+    }
+    void releaseAllModule() {
+        for( auto lm = loaded_.end(); lm != loaded_.begin() + 1; lm-- ){
+            backend_->uninstall_module(lm->id);
+            registry_.unload_module(lm->id);
         }
+        module_    = nullptr;
+        module_id_ = 0;
     }
 
-    void bindSuppression(int id) {
-        releaseSuppression();
-
-        if (id == 0) {
-            LOG(_("engine: no suppression module requested (id=0)"));
+    void bindModule(int available_id) {
+        if (available_id == -1) {
+            LOG(_("engine: no module requested (id=-1)"));
             return;
         }
-
-        if (!registry_.load_module(ModuleKind::Suppression, id)) {
-            std::string msg = _("engine: cannot load suppression module id=");
-            msg += std::to_string(id);
+        int loaded_id = registry_.load_module(available_id);
+        if (loaded_id == -1) {
+            std::string msg = _("engine: cannot load module id=");
+            msg += std::to_string(available_id);
             LOG(msg);
             return;
         }
 
-        suppression_ = registry_.find_module(ModuleKind::Suppression, id);
-        if (!suppression_) {
-            std::string msg = _("engine: find_module returned null for suppression id=");
-            msg += std::to_string(id);
+        module_ = registry_.find_module(available_id);
+        if (!module_) {
+            std::string msg = _("engine: find_module returned null for module id=");
+            msg += std::to_string(available_id);
             LOG(msg);
-            registry_.unload_module(ModuleKind::Suppression, id);
+            registry_.unload_module(loaded_id);
             return;
         }
-        suppression_id_ = id;
+        module_id_ = available_id;
 
-        if (!backend_ || !backend_->install_module(suppression_, ModuleKind::Suppression, 0)) {
+        if (!backend_ || !backend_->install_module(module_, ModuleKind::Suppression, 0)) {
             std::string msg_err = error(__func__,
                 _("suppression module chain install failed"),
                 _("id=") + std::to_string(id));
             LOG_ERR(msg_err);
             registry_.unload_module(ModuleKind::Suppression, id);
-            suppression_    = nullptr;
-            suppression_id_ = 0;
+            module_    = nullptr;
+            module_id_ = 0;
             return;
         }
 
@@ -291,8 +300,8 @@ private:
 
     BackendBase* backend_        = nullptr;  // pointeur non-owning (registry)
     int          backend_id_     = -1;       // id du backend charge
-    ModuleBase*  suppression_    = nullptr;  // pointeur non-owning (registry)
-    int          suppression_id_ = 0;        // id du module de suppression charge
+    ModuleBase*  module_    = nullptr;  // pointeur non-owning (registry)
+    int          module_id_ = 0;        // id du module de suppression charge
 
     // Cache des mesures -- mis a jour par callbacks depuis le backend, hors RT.
     // Lu par l'UI via latencyInfo() / processingStats() (retours const ref).

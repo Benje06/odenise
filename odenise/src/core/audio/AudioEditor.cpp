@@ -5,18 +5,12 @@
 #include "AudioProcessor.h"
 #include "common.h"
 
-#include <cstring>
-
 namespace odenise::audio {
 
 // ----------------------------------------------------------------------------
 AudioEditor::AudioEditor(AudioProcessor* processor)
-    : processor_(processor) {
-    // Dimensionne le vecteur de selections par kind.
-    // Valeur 0 = aucun module selectionne pour ce kind.
-    const int num_kinds = static_cast<int>(ModuleKind::Inference) + 1;
-    selected_module_ids_.assign(num_kinds, 0);
-}
+    : processor_(processor)
+    , engine_(processor ? processor->engine() : nullptr) {}
 
 // ----------------------------------------------------------------------------
 //  Interfaces audio
@@ -48,84 +42,52 @@ bool AudioEditor::selectAudioInterface(int id) {
 //  Backend
 // ----------------------------------------------------------------------------
 
-bool AudioEditor::selectBackend(int id) {
-    Engine* eng = processor_ ? processor_->engine() : nullptr;
-    if (!eng) return false;
-
-    // Reconfigure l'engine avec le nouveau backend.
-    // TODO : Engine::reconfigure(EngineCaps) avec backend_id cible a ajouter.
-    // Pour l'instant passe par reconfigure(RuntimeConfig) qui ne change pas
-    // le backend -- le changement de backend necessite un reconfigure froid.
-    ApplyResult how;
-    RuntimeConfig cfg;  // cfg courante -- a recuperer depuis engine quand expose
-    eng->reconfigure(cfg, how);
-
-    selected_backend_id_ = id;
-    std::string msg = _("AudioEditor: selected backend id=");
-    msg += std::to_string(id);
+bool AudioEditor::selectBackend(int available_id) {
+    if (!engine_) return false;
+    // TODO : engine_->reconfigure(EngineCaps avec backend_id=available_id)
+    selected_backend_id_ = available_id;
+    std::string msg = _("AudioEditor: selected backend available_id=");
+    msg += std::to_string(available_id);
     LOG(msg);
     return true;
 }
 
 // ----------------------------------------------------------------------------
-//  Modules
+//  Module
 // ----------------------------------------------------------------------------
 
-bool AudioEditor::selectModule(ModuleKind kind, int id) {
-    if (!processor_) return false;
-
-    // Installe le module selectionne a la position 0 pour ce kind.
-    // La position dans la chaine sera affinee quand la gestion multi-modules
-    // sera completee dans Engine.
-    const bool ok = processor_->installModule(kind, id, 0, RuntimeConfig{});
-    if (ok) {
-        selected_module_ids_[static_cast<int>(kind)] = id;
-        std::string msg = _("AudioEditor: selected module kind=");
-        msg += kindName(kind);
-        msg += _(" id=");
-        msg += std::to_string(id);
-        LOG(msg);
-    }
+bool AudioEditor::selectModule(int available_id, const RuntimeConfig& cfg) {
+    // Equivalent a insertModule en derniere position.
+    // La position -1 signifie "derniere" -- Engine resout la position reelle.
+    const bool ok = insertModule(available_id, -1, cfg);
+    if (ok) selected_module_id_ = available_id;
     return ok;
 }
 
-int AudioEditor::selectedModuleId(ModuleKind kind) const noexcept {
-    const int idx = static_cast<int>(kind);
-    if (idx < 0 || idx >= static_cast<int>(selected_module_ids_.size()))
-        return 0;
-    return selected_module_ids_[idx];
-}
-
 // ----------------------------------------------------------------------------
-//  Configuration de la chaine audio -- delegue a AudioProcessor
+//  Configuration de la chaine
 // ----------------------------------------------------------------------------
 
-bool AudioEditor::installModule(ModuleKind kind, int module_id, int position,
-                                const RuntimeConfig& cfg) {
-    if (!processor_) return false;
-    return processor_->installModule(kind, module_id, position, cfg);
-}
-
-bool AudioEditor::insertModule(ModuleKind kind, int module_id, int position,
+bool AudioEditor::insertModule(int available_id, int position,
                                const RuntimeConfig& cfg) {
     if (!processor_) return false;
-    return processor_->insertModule(kind, module_id, position, cfg);
+    return processor_->insertModule(available_id, position, cfg);
 }
 
-bool AudioEditor::replaceModule(ModuleKind kind, int module_id, int position,
+bool AudioEditor::replaceModule(int available_id, int position,
                                 const RuntimeConfig& cfg) {
     if (!processor_) return false;
-    return processor_->replaceModule(kind, module_id, position, cfg);
+    return processor_->replaceModule(available_id, position, cfg);
 }
 
-void AudioEditor::removeModule(ModuleKind kind, int position) {
+void AudioEditor::removeModule(int position) {
     if (!processor_) return;
-    processor_->removeModule(kind, position);
+    processor_->removeModule(position);
 }
 
-bool AudioEditor::reconfigureModule(int module_id, const RuntimeConfig& cfg) {
+bool AudioEditor::reconfigureModule(int loaded_id, const RuntimeConfig& cfg) {
     if (!processor_) return false;
-    return processor_->reconfigureModule(module_id, cfg);
+    return processor_->reconfigureModule(loaded_id, cfg);
 }
 
 // ----------------------------------------------------------------------------
@@ -141,29 +103,15 @@ const ProcessingStats& AudioEditor::processingStats() const noexcept {
 }
 
 BackendCaps AudioEditor::backendCaps() const {
-    Engine* eng = processor_ ? processor_->engine() : nullptr;
-    if (!eng) return {};
-    return eng->backendCaps();
+    if (!engine_) return {};
+    return engine_->backendCaps();
 }
 
 void AudioEditor::poll() {
-    Engine* eng = processor_ ? processor_->engine() : nullptr;
-    if (!eng) return;
+    if (!engine_) return;
 
-    const LatencyInfo&     new_latency = eng->latencyInfo();
-    const ProcessingStats& new_stats   = eng->processingStats();
-
-    // Compare avec le cache local -- declenche on_stats_changed si changement.
-    const bool changed =
-        (std::memcmp(&new_latency, &cached_latency_, sizeof(LatencyInfo))     != 0) ||
-        (std::memcmp(&new_stats,   &cached_stats_,   sizeof(ProcessingStats)) != 0);
-
-    if (changed) {
-        cached_latency_ = new_latency;
-        cached_stats_   = new_stats;
-        if (on_stats_changed)
-            on_stats_changed(on_stats_changed_user);
-    }
+    cached_latency_ = engine_->latencyInfo();
+    cached_stats_   = engine_->processingStats();
 }
 
 } // namespace odenise::audio

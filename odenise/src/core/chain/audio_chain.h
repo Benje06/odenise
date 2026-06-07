@@ -119,25 +119,24 @@ public:
     CHAIN bool install(BackendBase*    backend,
                        BackendContext* ctx,
                        ModuleBase*     mod,
-                       ModuleKind      kind,
-                       int             position);
+                       ModuleKind      kind);
 
     // Insere un module a la position donnee (decale les suivants).
     CHAIN bool insert(BackendBase*    backend,
                       BackendContext* ctx,
                       ModuleBase*     mod,
                       ModuleKind      kind,
-                      int             position);
+                      size_t             position);
 
     // Remplace le module a la position donnee.
     CHAIN bool replace(BackendBase*    backend,
                        BackendContext* ctx,
                        ModuleBase*     mod,
                        ModuleKind      kind,
-                       int             position);
+                       size_t             position);
 
     // Retire le module a la position donnee et recable les voisins.
-    CHAIN void remove(BackendBase* backend, int position) noexcept;
+    CHAIN void remove(BackendBase* backend, size_t position) noexcept;
 
     // -----------------------------------------------------------------------
     //  Execution RT -- appelee par le backend a chaque bloc.
@@ -168,8 +167,8 @@ private:
     struct ChainNode {
         ModuleBase* module   = nullptr;
         ModuleKind  kind     = ModuleKind::Suppression;
-        int         position = 0;
-        int         ctx_type = kBackendAny;  // type de contexte resolu
+        size_t      position = 0;
+        size_t      ctx_type = kBackendAny;  // type de contexte resolu
     };
 
     // Reconstruit la liste plate a partir des noeuds logiques.

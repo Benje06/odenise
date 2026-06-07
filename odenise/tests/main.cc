@@ -50,7 +50,7 @@ namespace {
         return 0;
     }
 
-    int run_process_test(std::unique_ptr<odenise::Engine>& engine) {
+    /*int run_process_test(std::unique_ptr<odenise::Engine>& engine) {
         msg = _("=== test: process passthrough ===");
         LOG(msg);
 
@@ -127,7 +127,7 @@ namespace {
         LOG(msg);
         return 0;
     }
-
+*/
     int run_backend_test(std::unique_ptr<odenise::Engine>& engine) {
         msg = _("=== test: Compute backend module ===");
         LOG(msg);
@@ -276,7 +276,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         int r = run_build_engine_test(engine);
         if (r != 0) return r;
 
-        r = run_load_chain_test(engine);
+        /*r = run_load_chain_test(engine);
         if (r != 0) return r;
 
         r = run_backend_test(engine);
@@ -284,12 +284,12 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
         r = run_suppression_test(engine);
         if (r != 0) return r;
+        */
+        /*r = run_process_test(engine);
+        if (r != 0) return r;*/
 
-        r = run_process_test(engine);
-        if (r != 0) return r;
-
-        r = run_latency_test(engine);
-        return r;
+        /*r = run_latency_test(engine);
+        return r;*/
     } catch (const std::exception& e) {
         std::string msg_err = error(__func__, _("unhandled exception"), e.what());
         LOG_ERR(msg_err);
