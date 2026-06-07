@@ -17,6 +17,9 @@
 //    - run_latency_test : cached_stats_ reste a zero sans appel a measure().
 //      measure() n'est pas expose par l'interface Engine ; les valeurs sont
 //      loggees a titre informatif (pas d'assertion de non-nullite).
+//    - run_set_audio_io_test : verifie uniquement que setAudioIO() ne plante
+//      pas et propage jusqu'au backend. La suspension interne du backend et
+//      le cablage effectif des buffers RT sont valides en phase 3b.
 // ============================================================================
 #include "engine.h"
 
@@ -243,6 +246,27 @@ namespace {
         return 0;
     }
 
+    int run_set_audio_io_test(std::unique_ptr<odenise::Engine>& engine) {
+        msg = _("=== test: setAudioIO ===");
+        LOG(msg);
+
+        // Buffers minimaux : 1 canal entree, 1 canal sortie, kTestFrames samples.
+        // L'objectif est de valider que l'appel traverse Engine -> BackendBase
+        // sans crash. Le cablage effectif des buffers RT est valide en phase 3b.
+        float in_buf[kTestFrames]  = {};
+        float out_buf[kTestFrames] = {};
+        const float* in_ptr = in_buf;
+        odenise::TrackIO io{ &in_ptr, out_buf, 1 };
+
+        engine->setAudioIO(io);
+
+        msg = _("  -> setAudioIO() propagated to backend (OK)");
+        LOG(msg);
+        msg = _("=== setAudioIO test passed ===");
+        LOG(msg);
+        return 0;
+    }
+
     int run_build_engine_test(std::unique_ptr<odenise::Engine>& engine){
         odenise::EngineCaps    caps;
         odenise::RuntimeConfig cfg;
@@ -283,6 +307,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
         if (r != 0) return r;
 
         r = run_suppression_test(engine);
+        if (r != 0) return r;
+
+        r = run_set_audio_io_test(engine);
         if (r != 0) return r;
 
         /*r = run_process_test(engine);
