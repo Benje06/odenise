@@ -65,14 +65,14 @@ public:
     // -----------------------------------------------------------------------
     //  Backend -- selectionne depuis registry.available_.
     // -----------------------------------------------------------------------
-    bool selectBackend(int available_id);
+    bool selectBackend(size_t available_id);
     int  selectedBackendId() const noexcept { return selected_backend_id_; }
 
     // -----------------------------------------------------------------------
     //  Module -- selectionne depuis registry.available_.
     //  Equivalent a insertModule en derniere position avec config par defaut.
     // -----------------------------------------------------------------------
-    bool selectModule(int available_id, const RuntimeConfig& cfg);
+    bool selectModule(size_t available_id, const RuntimeConfig& cfg);
     int  selectedModuleId() const noexcept { return selected_module_id_; }
 
     // -----------------------------------------------------------------------
@@ -84,10 +84,10 @@ public:
     //  remove  : retire le module a la position, le decharge de loaded_.
     //  reconfigure : reconfigure un module loaded_ par son loaded_id.
     // -----------------------------------------------------------------------
-    bool insertModule    (int available_id, int position, const RuntimeConfig& cfg);
-    bool replaceModule   (int available_id, int position, const RuntimeConfig& cfg);
-    void removeModule    (int position);
-    bool reconfigureModule(int loaded_id,                 const RuntimeConfig& cfg);
+    bool insertModule    (size_t available_id, size_t position, const RuntimeConfig& cfg);
+    bool replaceModule   (size_t available_id, size_t position, const RuntimeConfig& cfg);
+    void removeModule    (size_t position);
+    bool reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg);
 
     // -----------------------------------------------------------------------
     //  Monitoring -- cache local mis a jour par poll().

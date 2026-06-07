@@ -78,7 +78,7 @@ void AudioProcessor::release() {
 //  Configuration de la chaine audio
 // ----------------------------------------------------------------------------
 
-bool AudioProcessor::insertModule(int available_id, int position,
+bool AudioProcessor::insertModule(size_t available_id, size_t position,
                                   const RuntimeConfig& cfg) {
     if (!engine_) return false;
     // TODO : engine_->insertModule(available_id, position, cfg)
@@ -86,7 +86,7 @@ bool AudioProcessor::insertModule(int available_id, int position,
     return true;
 }
 
-bool AudioProcessor::replaceModule(int available_id, int position,
+bool AudioProcessor::replaceModule(size_t available_id, size_t position,
                                    const RuntimeConfig& cfg) {
     if (!engine_) return false;
     // TODO : engine_->replaceModule(available_id, position, cfg)
@@ -94,13 +94,13 @@ bool AudioProcessor::replaceModule(int available_id, int position,
     return true;
 }
 
-void AudioProcessor::removeModule(int position) {
+void AudioProcessor::removeModule(size_t position) {
     if (!engine_) return;
     // TODO : engine_->removeModule(position)
     (void)position;
 }
 
-bool AudioProcessor::reconfigureModule(int loaded_id, const RuntimeConfig& cfg) {
+bool AudioProcessor::reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg) {
     if (!engine_) return false;
     // TODO : engine_->reconfigure(loaded_id, cfg)
     // -> BackendBase::reconfigure(loaded_id, cfg)

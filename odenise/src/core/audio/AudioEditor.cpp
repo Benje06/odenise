@@ -42,7 +42,7 @@ bool AudioEditor::selectAudioInterface(int id) {
 //  Backend
 // ----------------------------------------------------------------------------
 
-bool AudioEditor::selectBackend(int available_id) {
+bool AudioEditor::selectBackend(size_t available_id) {
     if (!engine_) return false;
     // TODO : engine_->reconfigure(EngineCaps avec backend_id=available_id)
     selected_backend_id_ = available_id;
@@ -56,7 +56,7 @@ bool AudioEditor::selectBackend(int available_id) {
 //  Module
 // ----------------------------------------------------------------------------
 
-bool AudioEditor::selectModule(int available_id, const RuntimeConfig& cfg) {
+bool AudioEditor::selectModule(size_t available_id, const RuntimeConfig& cfg) {
     // Equivalent a insertModule en derniere position.
     // La position -1 signifie "derniere" -- Engine resout la position reelle.
     const bool ok = insertModule(available_id, -1, cfg);
@@ -68,24 +68,24 @@ bool AudioEditor::selectModule(int available_id, const RuntimeConfig& cfg) {
 //  Configuration de la chaine
 // ----------------------------------------------------------------------------
 
-bool AudioEditor::insertModule(int available_id, int position,
+bool AudioEditor::insertModule(size_t available_id, size_t position,
                                const RuntimeConfig& cfg) {
     if (!processor_) return false;
     return processor_->insertModule(available_id, position, cfg);
 }
 
-bool AudioEditor::replaceModule(int available_id, int position,
+bool AudioEditor::replaceModule(size_t available_id, size_t position,
                                 const RuntimeConfig& cfg) {
     if (!processor_) return false;
     return processor_->replaceModule(available_id, position, cfg);
 }
 
-void AudioEditor::removeModule(int position) {
+void AudioEditor::removeModule(size_t position) {
     if (!processor_) return;
     processor_->removeModule(position);
 }
 
-bool AudioEditor::reconfigureModule(int loaded_id, const RuntimeConfig& cfg) {
+bool AudioEditor::reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg) {
     if (!processor_) return false;
     return processor_->reconfigureModule(loaded_id, cfg);
 }

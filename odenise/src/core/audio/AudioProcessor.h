@@ -72,17 +72,17 @@ public:
 
     // Charge depuis available_ et insere a la position donnee.
     // installModule = insertModule en derniere position.
-    bool insertModule(int available_id, int position, const RuntimeConfig& cfg);
+    bool insertModule(size_t available_id, size_t position, const RuntimeConfig& cfg);
 
     // Charge depuis available_ et remplace le module a la position donnee.
-    bool replaceModule(int available_id, int position, const RuntimeConfig& cfg);
+    bool replaceModule(size_t available_id, size_t position, const RuntimeConfig& cfg);
 
     // Retire le module a la position donnee, le decharge de loaded_.
-    void removeModule(int position);
+    void removeModule(size_t position);
 
     // Reconfigure un module deja dans loaded_ par son loaded_id.
     // cfg peut etre une sous-classe de RuntimeConfig (cast dans le module).
-    bool reconfigureModule(int loaded_id, const RuntimeConfig& cfg);
+    bool reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg);
 
     // -----------------------------------------------------------------------
     //  Acces a l'engine (pour AudioEditor)
