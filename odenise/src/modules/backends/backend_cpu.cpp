@@ -78,14 +78,14 @@ public:
         : sample_rate_(sample_rate)
         , window_size_max_(window_size_max)
         , ctx_(window_size_max) {
-            /*S_Thread();
-            S_Thread2();*/
+            S_Thread();
+            S_Thread2();
         }
 
     ~CpuBackendImpl() override {
         // Arrete les threads avant destruction.
-        /*T_Thread2();
-        T_Thread();*/
+        T_Thread2();
+        T_Thread();
     }
 
     // -----------------------------------------------------------------------

@@ -130,6 +130,7 @@ endif()
 add_subdirectory(lib/log)
 add_subdirectory(lib/chain)
 add_subdirectory(lib/thread)
+#add_subdirectory(lib/audio)
 add_subdirectory(src/core)
 
 if(ODENISE_BUILD_MODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/CMakeLists.txt")

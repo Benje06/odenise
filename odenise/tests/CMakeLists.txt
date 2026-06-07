@@ -1,5 +1,7 @@
 # tests/CMakeLists.txt -- harnais de test du coeur.
-add_executable(test_core main.cc)
+add_executable(test_core main.cc
+    ${CMAKE_SOURCE_DIR}/src/core/audio/AudioEditor.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/audio/AudioProcessor.cpp)
 if(MSVC)
     target_compile_options(test_core PRIVATE $<$<CONFIG:Debug>:/Zi>)
     target_link_options(test_core PRIVATE $<$<CONFIG:Debug>:/DEBUG:FULL>)

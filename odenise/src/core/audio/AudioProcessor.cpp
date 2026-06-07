@@ -1,8 +1,8 @@
 // ============================================================================
 //  src/core/audio/AudioProcessor.cpp
 // ============================================================================
-#include "AudioProcessor.h"
 #include "common.h"
+#include "AudioProcessor.h"
 
 namespace odenise::audio {
 

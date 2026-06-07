@@ -1,0 +1,58 @@
+# ============================================================================
+#  lib/chain/CMakeLists.txt -- libodenise_audio : AudioChain.
+#
+#  Bibliotheque partagee utilitaire, linkee par :
+#    - libodenise (coeur)
+#    - les modules qui gerent leur propre chaine de traitement (backend_cpu, ...)
+#
+#  AudioChain est un utilitaire de cablage (liste plate de ChainElement,
+#  double buffer, swap atomique, accumulation de latence). Elle depend de
+#  LogManager (LOG/LOG_ERR) -- donc linke contre odenise_log.
+#
+#  Sources : audio_chain.cpp + audio_chain.h depuis src/core/chain/ --
+#  les sources restent a leur emplacement d'origine.
+# ============================================================================
+
+add_library(odenise_audio SHARED
+    ${CMAKE_SOURCE_DIR}/src/core/audio/AudioEditor.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/audio/AudioProcessor.cpp)
+
+set_target_properties(odenise_audio PROPERTIES
+    OUTPUT_NAME               odenise_audio
+    VERSION                   ${PROJECT_VERSION}
+    SOVERSION                 ${PROJECT_VERSION_MAJOR}
+    CXX_VISIBILITY_PRESET     hidden
+    VISIBILITY_INLINES_HIDDEN ON)
+
+# PUBLIC : expose audio_chain.h et ns_engine.h aux consommateurs.
+# PRIVATE : tools/ pour logger.h (via odenise_log en link).
+target_include_directories(odenise_audio
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/interfaces>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/audio>
+        $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/core/tools)
+
+target_compile_features(odenise_audio PUBLIC cxx_std_20)
+target_compile_definitions(odenise_audio PRIVATE
+    ODENISE_BUILD_LIBRARY=1
+    AUDIO_EXPORTS=1
+    DEBUG_TOOL=1)
+
+# Depend de odenise_log pour LOG/LOG_ERR dans audio_chain.cpp.
+target_link_libraries(odenise_audio PUBLIC odenise_log)
+
+if(MSVC)
+    target_compile_options(odenise_audio PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4>)
+else()
+    target_compile_options(odenise_audio PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>)
+endif()
+
+include(GNUInstallDirs)
+install(TARGETS odenise_audio
+        LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})

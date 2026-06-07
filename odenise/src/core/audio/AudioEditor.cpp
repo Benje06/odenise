@@ -1,9 +1,10 @@
 // ============================================================================
 //  src/core/audio/AudioEditor.cpp
 // ============================================================================
-#include "AudioEditor.h"
-#include "AudioProcessor.h"
 #include "common.h"
+#include "AudioProcessor.h"
+#include "AudioEditor.h"
+
 
 namespace odenise::audio {
 
@@ -58,8 +59,8 @@ bool AudioEditor::selectBackend(size_t available_id) {
 
 bool AudioEditor::selectModule(size_t available_id, const RuntimeConfig& cfg) {
     // Equivalent a insertModule en derniere position.
-    // La position -1 signifie "derniere" -- Engine resout la position reelle.
-    const bool ok = insertModule(available_id, -1, cfg);
+    // La position 0 signifie "derniere" -- Engine resout la position reelle.
+    const bool ok = insertModule(available_id, 0, cfg);
     if (ok) selected_module_id_ = available_id;
     return ok;
 }

@@ -16,8 +16,6 @@
 set(ODENISE_CORE_SOURCES
     engine.cpp
     registry/module_registry.cpp
-    audio/AudioEditor.cpp
-    audio/AudioProcessor.cpp
 )
 
 add_library(odenise_core SHARED ${ODENISE_CORE_SOURCES})

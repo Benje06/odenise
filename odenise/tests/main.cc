@@ -21,7 +21,9 @@
 //      pas et propage jusqu'au backend. La suspension interne du backend et
 //      le cablage effectif des buffers RT sont valides en phase 3b.
 // ============================================================================
+
 #include "engine.h"
+#include "AudioProcessor.h"
 
 #include <memory>
 #include <string>    // std::string (construction des messages de log)
@@ -32,18 +34,12 @@ namespace {
     std::string msg;
     std::string msg_err;
 
-    int run_load_chain_test(std::unique_ptr<odenise::Engine>& engine) {
+    int run_load_chain_test(odenise::audio::AudioProcessor& processor) {
         msg = _("=== test: load chain ===");
         LOG(msg);
 
-        // Backends dynamiques (ComputeBackend)
-        /*const auto backends = odenise::availableBackends();
-        msg = _("compute backends modules found: ");
-        msg += std::to_string(backends.size());
-        LOG(msg);*/
-        
         // Modules de suppression (dont passthrough)
-        const auto sup = engine->modules(odenise::ModuleKind::Suppression);
+        const auto sup = processor.engine()->modules(odenise::ModuleKind::Suppression);
         msg = _("suppression modules found: ");
         msg += std::to_string(sup.size());
         LOG(msg);
@@ -52,6 +48,7 @@ namespace {
         LOG(msg);
         return 0;
     }
+
 
    /*int run_process_test(std::unique_ptr<odenise::Engine>& engine) {
         msg = _("=== test: process passthrough ===");
@@ -131,12 +128,12 @@ namespace {
         return 0;
     }
 */
-    int run_backend_test(std::unique_ptr<odenise::Engine>& engine) {
+    int run_backend_test(odenise::audio::AudioProcessor& processor) {
         msg = _("=== test: Compute backend module ===");
         LOG(msg);
 
         // Au moins un ComputeBackend doit etre charge (le repli CPU).
-        const auto backends = engine->modules(odenise::ModuleKind::ComputeBackend);
+        const auto backends = processor.engine()->modules(odenise::ModuleKind::ComputeBackend);
         msg = _("compute backends: ");
         msg += std::to_string(backends.size());
         LOG(msg);
@@ -152,7 +149,7 @@ namespace {
             msg += label;
             msg += "...";
             LOG(msg);
-            auto result = engine->selfTest(b.id);
+            auto result = processor.engine()->selfTest(b.id);
             if (result.passed) {
                 msg = _("     PASS: ");
                 msg += result.detail;
@@ -168,11 +165,11 @@ namespace {
         return 0;
     }
 
-    int run_suppression_test(std::unique_ptr<odenise::Engine>& engine) {
+    int run_suppression_test(odenise::audio::AudioProcessor& processor) {
         msg = _("=== test: Suppression module ===");
         LOG(msg);
 
-        const auto suppressions = engine->modules(odenise::ModuleKind::Suppression);
+        const auto suppressions = processor.engine()->modules(odenise::ModuleKind::Suppression);
         msg = _("suppression modules: ");
         msg += std::to_string(suppressions.size());
         LOG(msg);
@@ -187,7 +184,7 @@ namespace {
             msg += label;
             msg += "...";
             LOG(msg);
-            auto result = engine->selfTest(b.id);
+            auto result = processor.engine()->selfTest(b.id);
             if (result.passed) {
                 msg = _("     PASS: ");
                 msg += result.detail;
@@ -203,13 +200,13 @@ namespace {
         return 0;
     }
 
-    int run_latency_test(std::unique_ptr<odenise::Engine>& engine) {
+    int run_latency_test(odenise::audio::AudioProcessor& processor) {
         msg = _("=== test: latency info ===");
         LOG(msg);
 
         // Latence declaree : sommee au cablage depuis les modules installes.
         // Vaut 0 si aucun module C++ (ModuleBase) n'est encore installe.
-        const odenise::LatencyInfo li = engine->latencyInfo();
+        const odenise::LatencyInfo li = processor.engine()->latencyInfo();
         msg = _("  -> declared latency: ");
         msg += std::to_string(li.declared_samples);
         msg += _(" samples (");
@@ -221,7 +218,7 @@ namespace {
         // cached_stats_ reste a zero tant que BackendBase::measure() n'a pas
         // ete appele. measure() n'est pas expose par l'interface Engine ;
         // il sera declenche depuis l'UI/timer dans les phases suivantes.
-        const odenise::ProcessingStats ps = engine->processingStats();
+        const odenise::ProcessingStats ps = processor.engine()->processingStats();
         msg = _("  -> processing stats: min=");
         msg += std::to_string(ps.min_ms);
         msg += _(" max=");
@@ -234,7 +231,7 @@ namespace {
         LOG(msg);
 
         // backendCaps : valide meme sans backend C++ actif (retourne struct vide).
-        const odenise::BackendCaps bc = engine->backendCaps();
+        const odenise::BackendCaps bc = processor.engine()->backendCaps();
         msg = _("  -> backend caps: name='");
         msg += bc.name.empty() ? _("(none)") : bc.name;
         msg += _("' gpu=");
@@ -246,19 +243,20 @@ namespace {
         return 0;
     }
 
-    int run_set_audio_io_test(std::unique_ptr<odenise::Engine>& engine) {
+    int run_set_audio_io_test(odenise::audio::AudioProcessor& processor) {
         msg = _("=== test: setAudioIO ===");
         LOG(msg);
 
         // Buffers minimaux : 1 canal entree, 1 canal sortie, kTestFrames samples.
-        // L'objectif est de valider que l'appel traverse Engine -> BackendBase
-        // sans crash. Le cablage effectif des buffers RT est valide en phase 3b.
+        // L'objectif est de valider que l'appel traverse AudioProcessor ->
+        // Engine -> BackendBase sans crash. Le cablage effectif des buffers RT
+        // est valide en phase 3b.
         float in_buf[kTestFrames]  = {};
         float out_buf[kTestFrames] = {};
         const float* in_ptr = in_buf;
         odenise::TrackIO io{ &in_ptr, out_buf, 1 };
 
-        engine->setAudioIO(io);
+        processor.setAudioIO(io);
 
         msg = _("  -> setAudioIO() propagated to backend (OK)");
         LOG(msg);
@@ -267,23 +265,22 @@ namespace {
         return 0;
     }
 
-    int run_build_engine_test(std::unique_ptr<odenise::Engine>& engine){
-        odenise::EngineCaps    caps;
-        odenise::RuntimeConfig cfg;
-        odenise::Status        st;
-        msg = _("=== test: Build engine ===");
+    int run_build_processor_test(odenise::audio::AudioProcessor& processor) {
+        msg = _("=== test: Build AudioProcessor ===");
         LOG(msg);
-        engine = odenise::createEngine(caps, cfg, &st);
-        if (!engine) {
-            msg_err = error(__func__, _("createEngine"), _("returned nullptr"));
+
+        // AudioProcessor construit avec caps et cfg par defaut.
+        // Verifie que l'engine interne a ete cree correctement.
+        if (!processor.engine()) {
+            msg_err = error(__func__, _("AudioProcessor::engine()"), _("returned nullptr"));
             LOG_ERR(msg_err);
             return 1;
         }
-        msg = _("engine created, latency = ");
-        msg += std::to_string(engine->latencySamples());
+        msg = _("engine created via AudioProcessor, latency = ");
+        msg += std::to_string(processor.engine()->latencySamples());
         msg += _(" samples");
         LOG(msg);
-        msg = _("=== Engine test passed ===");
+        msg = _("=== AudioProcessor test passed ===");
         LOG(msg);
         return 0;
     }
@@ -295,27 +292,30 @@ int main(int /*argc*/, char* /*argv*/[]) {
     // Handler de log : niveau 2 (fichier + console) vers odenise_test.log.
     LogManager::instance().add_handler(
         std::make_shared<Logger>("odenise_test.log", 2));
-    std::unique_ptr<odenise::Engine> engine;
+
+    // AudioProcessor possede l'engine. Tous les tests passent par lui.
+    odenise::audio::AudioProcessor processor;
+
     try {
-        int r = run_build_engine_test(engine);
-        if (r != 0) return r;
-        
-        r = run_load_chain_test(engine);
-        if (r != 0) return r;
-        
-        r = run_backend_test(engine);
+        int r = run_build_processor_test(processor);
         if (r != 0) return r;
 
-        r = run_suppression_test(engine);
+        r = run_load_chain_test(processor);
         if (r != 0) return r;
 
-        r = run_set_audio_io_test(engine);
+        r = run_backend_test(processor);
         if (r != 0) return r;
 
-        /*r = run_process_test(engine);
+        r = run_suppression_test(processor);
+        if (r != 0) return r;
+
+        r = run_set_audio_io_test(processor);
+        if (r != 0) return r;
+
+        /*r = run_process_test(processor);
         if (r != 0) return r;*/
 
-        r = run_latency_test(engine);
+        r = run_latency_test(processor);
         return r;
     } catch (const std::exception& e) {
         std::string msg_err = error(__func__, _("unhandled exception"), e.what());

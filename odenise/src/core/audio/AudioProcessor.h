@@ -26,7 +26,26 @@
 #include "engine.h"
 
 #include <memory>
-
+// ---------------------------------------------------------------------------
+//  Visibilite des symboles de libodenise_audio.
+//  ODENISE_AUDIO_API : exporte depuis la lib, importe chez le consommateur.
+//  Meme patron que ODENISE_API / LOGGER dans le reste du projet.
+// ---------------------------------------------------------------------------
+#if defined(_WIN32) || defined(__MINGW32__)
+    #ifdef AUDIO_EXPORTS
+        #define AUDIO __declspec(dllexport)
+    #elif defined(AUDIO_IMPORTS)
+        #define AUDIO __declspec(dllimport)
+    #else
+        #define AUDIO
+    #endif
+#else
+    #ifdef AUDIO_EXPORTS
+        #define AUDIO __attribute__((visibility("default")))
+    #else
+        #define AUDIO
+    #endif
+#endif
 namespace odenise::audio {
 
 class AudioProcessor {
@@ -49,15 +68,15 @@ public:
     // [CTRL] Prepare la chaine (sample_rate, block_size).
     // Reconfigure l'engine et le backend.
     // TODO : Engine::reconfigure(EngineCaps, RuntimeConfig) a ajouter.
-    bool prepare(int sample_rate, int block_size);
+    AUDIO bool prepare(int sample_rate, int block_size);
 
     // [CTRL] Cable les pointeurs audio sur le backend via engine.
     // TODO : Engine::setAudioIO(TrackIO) a ajouter.
-    bool setAudioIO(TrackIO io);
+    AUDIO bool setAudioIO(TrackIO io);
 
     // [CTRL] Suspend le backend via engine.
     // TODO : Engine::release() a ajouter.
-    void release();
+    AUDIO void release();
 
     // -----------------------------------------------------------------------
     //  Configuration de la chaine audio
@@ -72,17 +91,17 @@ public:
 
     // Charge depuis available_ et insere a la position donnee.
     // installModule = insertModule en derniere position.
-    bool insertModule(size_t available_id, size_t position, const RuntimeConfig& cfg);
+    AUDIO bool insertModule(size_t available_id, size_t position, const RuntimeConfig& cfg);
 
     // Charge depuis available_ et remplace le module a la position donnee.
-    bool replaceModule(size_t available_id, size_t position, const RuntimeConfig& cfg);
+    AUDIO bool replaceModule(size_t available_id, size_t position, const RuntimeConfig& cfg);
 
     // Retire le module a la position donnee, le decharge de loaded_.
-    void removeModule(size_t position);
+    AUDIO void removeModule(size_t position);
 
     // Reconfigure un module deja dans loaded_ par son loaded_id.
     // cfg peut etre une sous-classe de RuntimeConfig (cast dans le module).
-    bool reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg);
+    AUDIO bool reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg);
 
     // -----------------------------------------------------------------------
     //  Acces a l'engine (pour AudioEditor)
