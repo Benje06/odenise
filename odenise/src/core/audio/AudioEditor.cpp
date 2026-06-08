@@ -5,7 +5,6 @@
 #include "AudioProcessor.h"
 #include "AudioEditor.h"
 
-
 namespace odenise::audio {
 
 // ----------------------------------------------------------------------------
@@ -14,28 +13,93 @@ AudioEditor::AudioEditor(AudioProcessor* processor)
     , engine_(processor ? processor->engine() : nullptr) {}
 
 // ----------------------------------------------------------------------------
-//  Interfaces audio
+AudioEditor::~AudioEditor() {}
+
+// ----------------------------------------------------------------------------
+//  Interfaces d'entree
 // ----------------------------------------------------------------------------
 
-void AudioEditor::setAudioInterfaces(std::vector<AudioInterfaceInfo> interfaces) {
-    interfaces_ = std::move(interfaces);
+void AudioEditor::setAudioInputs(std::vector<AudioInterfaceInfo> inputs) {
+    inputs_ = std::move(inputs);
 }
 
-const std::vector<AudioInterfaceInfo>& AudioEditor::audioInterfaces() const noexcept {
-    return interfaces_;
+const std::vector<AudioInterfaceInfo>& AudioEditor::audioInputs() const noexcept {
+    return inputs_;
 }
 
-bool AudioEditor::selectAudioInterface(int id) {
-    for (const auto& iface : interfaces_) {
+bool AudioEditor::selectInputInterface(int id) {
+    for (const auto& iface : inputs_) {
         if (iface.id == id) {
-            selected_interface_id_ = id;
+            selected_input_id_ = id;
+            selected_input_ch_ = 0;  // reset canal a la selection d'interface
             return true;
         }
     }
     std::string msg_err = error(__func__,
-        _("AudioEditor: unknown audio interface id"),
+        _("AudioEditor: unknown input interface id"),
         std::to_string(id));
     LOG_ERR(msg_err);
+    return false;
+}
+
+bool AudioEditor::selectInputChannel(int channel) {
+    for (const auto& iface : inputs_) {
+        if (iface.id == selected_input_id_) {
+            if (channel < 0 || channel >= iface.max_input_channels) {
+                std::string msg_err = error(__func__,
+                    _("AudioEditor: input channel out of range"),
+                    std::to_string(channel));
+                LOG_ERR(msg_err);
+                return false;
+            }
+            selected_input_ch_ = channel;
+            return true;
+        }
+    }
+    return false;
+}
+
+// ----------------------------------------------------------------------------
+//  Interfaces de sortie
+// ----------------------------------------------------------------------------
+
+void AudioEditor::setAudioOutputs(std::vector<AudioInterfaceInfo> outputs) {
+    outputs_ = std::move(outputs);
+}
+
+const std::vector<AudioInterfaceInfo>& AudioEditor::audioOutputs() const noexcept {
+    return outputs_;
+}
+
+bool AudioEditor::selectOutputInterface(int id) {
+    for (const auto& iface : outputs_) {
+        if (iface.id == id) {
+            selected_output_id_ = id;
+            selected_output_ch_ = 0;  // reset canal a la selection d'interface
+            return true;
+        }
+    }
+    std::string msg_err = error(__func__,
+        _("AudioEditor: unknown output interface id"),
+        std::to_string(id));
+    LOG_ERR(msg_err);
+    return false;
+}
+
+bool AudioEditor::selectOutputChannel(int channel) {
+    for (const auto& iface : outputs_) {
+        if (iface.id == selected_output_id_) {
+            if (channel < 0 || channel >= iface.max_output_channels) {
+                std::string msg_err = error(__func__,
+                    _("AudioEditor: output channel out of range"),
+                    std::to_string(channel));
+                LOG_ERR(msg_err);
+                return false;
+            }
+            selected_output_ch_ = channel;
+            return true;
+        }
+    }
     return false;
 }
 
@@ -45,7 +109,6 @@ bool AudioEditor::selectAudioInterface(int id) {
 
 bool AudioEditor::selectBackend(size_t available_id) {
     if (!engine_) return false;
-    // TODO : engine_->reconfigure(EngineCaps avec backend_id=available_id)
     selected_backend_id_ = available_id;
     std::string msg = _("AudioEditor: selected backend available_id=");
     msg += std::to_string(available_id);
@@ -58,8 +121,6 @@ bool AudioEditor::selectBackend(size_t available_id) {
 // ----------------------------------------------------------------------------
 
 bool AudioEditor::selectModule(size_t available_id, const RuntimeConfig& cfg) {
-    // Equivalent a insertModule en derniere position.
-    // La position 0 signifie "derniere" -- Engine resout la position reelle.
     const bool ok = insertModule(available_id, 0, cfg);
     if (ok) selected_module_id_ = available_id;
     return ok;
@@ -110,7 +171,6 @@ BackendCaps AudioEditor::backendCaps() const {
 
 void AudioEditor::poll() {
     if (!engine_) return;
-
     cached_latency_ = engine_->latencyInfo();
     cached_stats_   = engine_->processingStats();
 }

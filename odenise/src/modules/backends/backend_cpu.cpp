@@ -72,7 +72,7 @@ private:
 //  (OdeniseModuleEntryFn retourne ModuleBase*). Le loader caste vers
 //  BackendBase* via dynamic_cast apres avoir verifie le kind.
 // ============================================================================
-class CpuBackendImpl final : public odenise::BackendBase, public odenise::ModuleBase {
+class CpuBackendImpl final : public odenise::BackendBase {
 public:
     explicit CpuBackendImpl(int sample_rate, int window_size_max)
         : sample_rate_(sample_rate)
@@ -80,9 +80,13 @@ public:
         , ctx_(window_size_max) {
             S_Thread();
             S_Thread2();
+            P_Thread();
+            P_Thread2();
         }
 
     ~CpuBackendImpl() override {
+        R_Thread2();
+        R_Thread();
         // Arrete les threads avant destruction.
         T_Thread2();
         T_Thread();
@@ -196,11 +200,11 @@ public:
     //  Appele par l'engine au bind et a chaque Engine::reconfigure().
     //  Hors RT uniquement. Pas de destruction/recreation du thread RT.
     // -----------------------------------------------------------------------
-    void reconfigure(const odenise::EngineCaps& caps,
+    odenise::Status reconfigure(const odenise::EngineCaps& caps,
                      const odenise::RuntimeConfig& cfg) override {
         // Suspend les threads sans les detruire.
-        /*P_Thread();
-        P_Thread2();*/
+        P_Thread();
+        P_Thread2();
 
         sample_rate_        = caps.sample_rate;
         window_size_max_    = caps.window_size_max;
@@ -208,8 +212,9 @@ public:
         (void)cfg;  // sera utilise quand les modules exploiteront n, hop, etc.
 
         // Reprend Run2 avant Run : mesure prete avant le traitement RT.
-        /*R_Thread2();
-        R_Thread();*/
+        R_Thread2();
+        R_Thread();
+        return odenise::Status::Ok;
     }
 
     // -----------------------------------------------------------------------
@@ -314,10 +319,11 @@ public:
     //  Methodes ModuleBase requises par l'heritage (non utilisees par le backend).
     // -----------------------------------------------------------------------
     int    latency_samples() const noexcept override { return 0; }
+    int    latency_samples_rt() const noexcept override { return 0; }
     bool   install(odenise::BackendContext*) override { return true; }
     void   uninstall(odenise::BackendContext*) noexcept override {}
     void   set_param(odenise::ParamId, float) noexcept override {}
-    void   reconfigure(const odenise::RuntimeConfig&) override {}
+    odenise::Status   reconfigure(const odenise::RuntimeConfig&) override {}
     void*  output_buf() noexcept override { return nullptr; }
     void   set_input(const void*) noexcept override {}
     void   process(int) noexcept override {}

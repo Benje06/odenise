@@ -247,7 +247,9 @@ int Thread::T_Thread2() {
  */
 int Thread::P_Thread() {
     pause_.store(true, std::memory_order_release);
-    while (!paused_.load(std::memory_order_acquire)) {}
+    while (!paused_.load(std::memory_order_acquire)) {
+
+    }
     return 0;
 }
 
@@ -260,7 +262,9 @@ int Thread::R_Thread() {
 /* P_Thread2 / R_Thread2 -- même logique pour Run2(). */
 int Thread::P_Thread2() {
     pause2_.store(true, std::memory_order_release);
-    while (!paused2_.load(std::memory_order_acquire)) {}
+    while (!paused2_.load(std::memory_order_acquire)) {
+        
+    }
     return 0;
 }
 

@@ -318,19 +318,20 @@ public:
     virtual ~BackendContext() = default;
 
     // [CTRL] Memoire de travail pre-allouee par le backend a window_size_max.
+    // tous les modules d'une audio chaine travaille avec la meme taille de buffer
     // Le module y taille ses buffers internes a l'installation (hors RT).
     // Zéro allocation en RT.
-    virtual void*  scratch_buf(size_t bytes) noexcept = 0;
+    virtual void* scratch_buf(size_t bytes) noexcept = 0;
 
     // [RT/CTRL] Contexte natif de la ressource de calcul.
     // CPU : nullptr ou pointeur vers un pool de threads.
     // CUDA : pointeur vers un cudaStream_t actif.
     // Le module caste selon son type de backend declare.
-    virtual void*  compute_stream() noexcept = 0;
+    virtual void* compute_stream() noexcept = 0;
 
     // [CTRL] Type de backend de ce contexte (kBackendCPU, kBackendCUDA, ...).
     // Permet au module de valider la compatibilite a l'installation.
-    virtual int    backend_type() const noexcept = 0;
+    virtual int   backend_type() const noexcept = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -338,7 +339,7 @@ public:
 //  Chaque famille (Suppression, Window, DualMic, Inference) herite de cette
 //  base. La chaine de traitement manipule des ModuleBase* uniformement.
 // ---------------------------------------------------------------------------
-class ModuleBase {
+class ModuleBase : public Thread {
 public:
     virtual ~ModuleBase() = default;
 
@@ -352,9 +353,22 @@ public:
     // Valide tant que le module est charge. Jamais nul.
     virtual const OdeniseTestResultC* self_test_c() const noexcept = 0;
 
+    // --- cycle de vie / structure ---------------------------------------
+    // [RT]   latence algorithmique courante (echantillons), a declarer en PDC.
+    virtual int latency_samples_rt() const noexcept = 0;
     // [CTRL] Latence algorithmique declaree par ce module, en samples.
     // Sommee au cablage pour la PDC. Doit etre constante apres creation.
     virtual int latency_samples() const noexcept = 0;
+
+    // [CTRL] applique une nouvelle config ; choisit seul chaud vs froid.
+    // 'out_how' detaille le chemin pris.
+    virtual Status reconfigure(const RuntimeConfig& cfg,
+                               ApplyResult& out_how) = 0;
+
+    // [CTRL] Cable les pointeurs audio de l'interface sur le backend.
+    // Appele par AudioProcessor apres prepare(). Le backend gere en interne
+    // la suspension de son thread de traitement si necessaire.
+    virtual void setAudioIO(TrackIO io) = 0;
 
     // [CTRL] Installation sur un contexte backend.
     // Le module alloue ses buffers internes via ctx->scratch_buf(),
@@ -375,12 +389,13 @@ public:
     virtual void reconfigure(const RuntimeConfig& cfg) = 0;
 
     // [RT] Buffer de sortie du module (RAM ou device ptr selon le contexte).
-    // Le backend cable ce pointeur comme entree du module suivant au cablage.
+    // audio_chain, geré par le backend, cable ce pointeur comme entree du module suivant.
     // Valide apres install(), invalide apres uninstall().
     virtual void* output_buf() noexcept = 0;
 
-    // [CTRL] Cablage : le backend indique au module quelle est son entree.
-    // Appele une fois au cablage, avant le premier process().
+    // [CTRL] CBuffer d'entree 
+    // audio_chain, geré par le backend indique au module quelle est son entree.
+    // Appele une fois au cablage, avant le premier Run().
     // src est le output_buf() du module precedent, ou le buffer d'entree
     // du backend pour le premier module de la chaine.
     virtual void set_input(const void* src) noexcept = 0;
@@ -401,7 +416,7 @@ public:
 //  concret doit les implementer pour definir le comportement de ses threads
 //  de traitement (ex. boucle RT pour backend_cpu).
 // ---------------------------------------------------------------------------
-class BackendBase : public Thread {
+class BackendBase : public ModuleBase {
 public:
     virtual ~BackendBase() = default;
 
@@ -496,20 +511,6 @@ protected:
 class ODENISE_API Engine {
 public:
     virtual ~Engine() = default;
-
-    // --- cycle de vie / structure ---------------------------------------
-    // [RT]  latence algorithmique courante (echantillons), a declarer en PDC.
-    virtual int latencySamples() const noexcept = 0;
-
-    // [CTRL] applique une nouvelle config ; choisit seul chaud vs froid.
-    //        Ne detruit jamais le moteur. 'out_how' detaille le chemin pris.
-    virtual Status reconfigure(const RuntimeConfig& cfg,
-                               ApplyResult& out_how) = 0;
-
-    // [CTRL] Cable les pointeurs audio de l'interface sur le backend.
-    // Appele par AudioProcessor apres prepare(). Le backend gere en interne
-    // la suspension de son thread de traitement si necessaire.
-    virtual void setAudioIO(TrackIO io) = 0;
 
     // [CTRL] capabilities du backend reellement actif (GTX vs RTX, VRAM...).
     virtual BackendCaps backendCaps() const = 0;

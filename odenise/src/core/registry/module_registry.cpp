@@ -23,16 +23,15 @@
 // ---------------------------------------------------------------------------
 #if defined(_WIN32)
   #include <windows.h>
-  namespace {
+  namespace odenise {
     void* dl_open(const char* path)          { return (void*)LoadLibraryA(path); }
     void* dl_sym (void* h, const char* name) { return (void*)GetProcAddress((HMODULE)h, name); }
     void  dl_close(void* h)                  { if (h) FreeLibrary((HMODULE)h); }
     std::string dl_error()                   { return "LoadLibrary/GetProcAddress error"; }
     constexpr const char* kModuleExt = ".dll";
-  }
 #else
   #include <dlfcn.h>
-  namespace {
+  namespace odenise {
     void* dl_open(const char* path)          { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
     void* dl_sym (void* h, const char* name) { return dlsym(h, name); }
     void  dl_close(void* h)                  { if (h) dlclose(h); }
@@ -42,12 +41,8 @@
     #else
       constexpr const char* kModuleExt = ".so";
     #endif
-  }
 #endif
 
-namespace odenise {
-
-namespace {
 
 bool kindFromInt(int k, ModuleKind& out) {
     switch (k) {
@@ -70,8 +65,6 @@ ModuleInfo toModuleInfo(const OdeniseModuleInfoC& c, ModuleKind kind) {
     m.backend_type_id = c.backend_type_id;
     return m;
 }
-
-} // namespace
 
 // ---------------------------------------------------------------------------
 //  Destructeur : decharge tous les modules charges dans l'ordre inverse.
@@ -450,4 +443,4 @@ TestResult ModuleRegistry::self_test(size_t available_id) {
     return out;
 }
 
-} // namespace odenise::detail
+} // namespace odenise

@@ -6,15 +6,22 @@
 //
 //  Acces :
 //    listes disponibles    -> engine_->modules(kind) / backendCaps()
-//    configuration audioe  -> processor_ -> Engine -> BackendBase -> audioe
+//    configuration audio   -> processor_ -> Engine -> BackendBase -> audio
 //    monitoring            -> engine_ (cache mis a jour par poll())
+//
+//  Routage audio :
+//    Les interfaces d'entree et de sortie sont gerees separement.
+//    Une interface d'entree peut etre differente de l'interface de sortie
+//    (ex. : micro sur ID24, monitoring sur Realtek).
+//    setAudioInputs()  / audioInputs()  : interfaces ayant des canaux d'entree.
+//    setAudioOutputs() / audioOutputs() : interfaces ayant des canaux de sortie.
 //
 //  Identifiants :
 //    available_id : id dans registry.available_ (insert, replace)
 //    loaded_id    : id dans registry.loaded_     (reconfigure)
-//    position     : rang dans la audioe (remove)
+//    position     : rang dans la chaine (remove)
 //
-//  La audioe est unique -- tous les kinds coexistent dans la meme audioe.
+//  La chaine est unique -- tous les kinds coexistent dans la meme chaine.
 //  Le kind est une metadonnee du module, pas un axe d'organisation.
 // ============================================================================
 #pragma once
@@ -24,11 +31,6 @@
 #include <string>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-//  Visibilite des symboles de libodenise_audio.
-//  ODENISE_AUDIO_API : exporte depuis la lib, importe chez le consommateur.
-//  Meme patron que ODENISE_API / LOGGER dans le reste du projet.
-// ---------------------------------------------------------------------------
 #if defined(_WIN32) || defined(__MINGW32__)
     #ifdef AUDIO_EXPORTS
         #define AUDIO __declspec(dllexport)
@@ -52,15 +54,19 @@ class AudioProcessor;
 // ---------------------------------------------------------------------------
 //  AudioInterfaceInfo -- description d'une interface audio disponible.
 //  Peuplee par la couche audio (JUCE DeviceManager, ALSA, WASAPI...).
+//  Une meme interface physique peut apparaitre dans les deux listes
+//  (entrees et sorties) si elle possede des canaux dans les deux sens.
 // ---------------------------------------------------------------------------
 struct AudioInterfaceInfo {
     int              id;
     std::string      name;
     int              max_input_channels;
     int              max_output_channels;
-    std::vector<int> supported_sample_rates;
-    std::vector<int> supported_buffer_sizes;
-    int              current_bit_depth = 0;
+    std::vector<int> supported_sample_rates;   // plage complete supportee
+    std::vector<int> supported_buffer_sizes;   // plage complete supportee
+    int              current_sample_rate  = 0; // valeur active (0 = inconnue)
+    int              current_buffer_size  = 0; // valeur active en samples
+    int              current_bit_depth    = 0; // 0 si non reporte par le driver
 };
 
 // ---------------------------------------------------------------------------
@@ -68,74 +74,82 @@ struct AudioInterfaceInfo {
 // ---------------------------------------------------------------------------
 class AudioEditor {
 public:
-    // processor et son engine doivent rester valides pendant toute la duree
-    // de vie d'AudioEditor.
     AUDIO explicit AudioEditor(AudioProcessor* processor);
-    AUDIO ~AudioEditor() = default;
+    AUDIO ~AudioEditor();
 
     AudioEditor(const AudioEditor&)            = delete;
     AudioEditor& operator=(const AudioEditor&) = delete;
 
     // -----------------------------------------------------------------------
-    //  Interfaces audio -- liste fournie par la couche audio.
+    //  Interfaces audio d'entree -- interfaces ayant max_input_channels > 0.
+    //  Fournies par la couche audio (JuceAudioLayer::scanDevices()).
     // -----------------------------------------------------------------------
-    AUDIO void setAudioInterfaces(std::vector<AudioInterfaceInfo> interfaces);
-    AUDIO const std::vector<AudioInterfaceInfo>& audioInterfaces() const noexcept;
+    AUDIO void setAudioInputs(std::vector<AudioInterfaceInfo> inputs);
+    AUDIO const std::vector<AudioInterfaceInfo>& audioInputs() const noexcept;
 
-    AUDIO bool selectAudioInterface(int id);
-    AUDIO int  selectedAudioInterfaceId() const noexcept { return selected_interface_id_; }
+    AUDIO bool selectInputInterface(int id);
+    AUDIO int  selectedInputInterfaceId()  const noexcept { return selected_input_id_;  }
+    AUDIO int  selectedInputChannel()      const noexcept { return selected_input_ch_;  }
+    AUDIO bool selectInputChannel(int channel);
+
+    // -----------------------------------------------------------------------
+    //  Interfaces audio de sortie -- interfaces ayant max_output_channels > 0.
+    // -----------------------------------------------------------------------
+    AUDIO void setAudioOutputs(std::vector<AudioInterfaceInfo> outputs);
+    AUDIO const std::vector<AudioInterfaceInfo>& audioOutputs() const noexcept;
+
+    AUDIO bool selectOutputInterface(int id);
+    AUDIO int  selectedOutputInterfaceId() const noexcept { return selected_output_id_; }
+    AUDIO int  selectedOutputChannel()     const noexcept { return selected_output_ch_; }
+    AUDIO bool selectOutputChannel(int channel);
 
     // -----------------------------------------------------------------------
     //  Backend -- selectionne depuis registry.available_.
     // -----------------------------------------------------------------------
-    AUDIO bool selectBackend(size_t available_id);
-    AUDIO size_t  selectedBackendId() const noexcept { return selected_backend_id_; }
+    AUDIO bool   selectBackend(size_t available_id);
+    AUDIO size_t selectedBackendId() const noexcept { return selected_backend_id_; }
 
     // -----------------------------------------------------------------------
     //  Module -- selectionne depuis registry.available_.
-    //  Equivalent a insertModule en derniere position avec config par defaut.
     // -----------------------------------------------------------------------
-    AUDIO bool selectModule(size_t available_id, const RuntimeConfig& cfg);
-    AUDIO size_t  selectedModuleId() const noexcept { return selected_module_id_; }
+    AUDIO bool   selectModule(size_t available_id, const RuntimeConfig& cfg);
+    AUDIO size_t selectedModuleId() const noexcept { return selected_module_id_; }
 
     // -----------------------------------------------------------------------
-    //  Configuration de la audioe (unique, tous kinds confondus).
-    //  Delegue a AudioProcessor -> Engine -> BackendBase -> audioe.
-    //
-    //  insert  : charge depuis available_, deplace et insere a la position.
-    //  replace : charge depuis available_, remplace le module a la position.
-    //  remove  : retire le module a la position, le decharge de loaded_.
-    //  reconfigure : reconfigure un module loaded_ par son loaded_id.
+    //  Configuration de la chaine (unique, tous kinds confondus).
     // -----------------------------------------------------------------------
     AUDIO bool insertModule    (size_t available_id, size_t position, const RuntimeConfig& cfg);
     AUDIO bool replaceModule   (size_t available_id, size_t position, const RuntimeConfig& cfg);
     AUDIO void removeModule    (size_t position);
-    AUDIO bool reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg);
+    AUDIO bool reconfigureModule(size_t loaded_id,  const RuntimeConfig& cfg);
 
     // -----------------------------------------------------------------------
     //  Monitoring -- cache local mis a jour par poll().
-    //  A appeler depuis un timer UI (juce::Timer, gtkmm signal_timeout...).
     // -----------------------------------------------------------------------
     const LatencyInfo&     latencyInfo()     const noexcept;
     const ProcessingStats& processingStats() const noexcept;
-    AUDIO BackendCaps            backendCaps()     const;
+    AUDIO BackendCaps      backendCaps()     const;
 
-    // Rafraichit le cache et declenche on_stats_changed si changement.
     AUDIO void poll();
 
-    // Le wrapper (JUCE/gtkmm) branche son repaint ici.
-    // Pointeur brut : pas de std::function (portabilite ABI).
     void (*on_stats_changed)(void* user) = nullptr;
     void*  on_stats_changed_user         = nullptr;
 
 private:
-    AudioProcessor* processor_;  // non-owning
-    Engine*         engine_;     // non-owning, cache depuis processor_->engine()
+    AudioProcessor* processor_;
+    Engine*         engine_;
 
-    std::vector<AudioInterfaceInfo> interfaces_;
-    int selected_interface_id_    = -1;
-    size_t selected_backend_id_   = 0;
-    size_t selected_module_id_    = 1;
+    // Interfaces separees par direction
+    std::vector<AudioInterfaceInfo> inputs_;
+    std::vector<AudioInterfaceInfo> outputs_;
+
+    int    selected_input_id_   = -1;
+    int    selected_input_ch_   =  0;
+    int    selected_output_id_  = -1;
+    int    selected_output_ch_  =  0;
+
+    size_t selected_backend_id_ = 0;
+    size_t selected_module_id_  = 1;
 
     LatencyInfo     cached_latency_;
     ProcessingStats cached_stats_;
