@@ -386,7 +386,7 @@ public:
     // Appele par le backend lors d'un reconfigure() global. Le module
     // extrait de cfg ce qui le concerne (n, hop, num_bands, ...).
     // Peut reallouer des buffers internes -- jamais appele depuis le RT.
-    virtual void reconfigure(const RuntimeConfig& cfg) = 0;
+    virtual Status reconfigure(const RuntimeConfig& cfg) = 0;
 
     // [RT] Buffer de sortie du module (RAM ou device ptr selon le contexte).
     // audio_chain, geré par le backend, cable ce pointeur comme entree du module suivant.
@@ -452,7 +452,7 @@ public:
     // Le backend redimensionne ses ressources (scratch, streams) selon les
     // caps et cfg, puis propage aux modules installes via module->reconfigure().
     // Peut reallouer -- jamais appele depuis le RT.
-    virtual void reconfigure(const EngineCaps& caps, const RuntimeConfig& cfg) = 0;
+    virtual Status reconfigure(const EngineCaps& caps, const RuntimeConfig& cfg) = 0;
 
     // [CTRL] Cable les pointeurs audio de l'interface sur le backend.
     // Appele par AudioProcessor apres prepare(). Stocke in/out/n_frames

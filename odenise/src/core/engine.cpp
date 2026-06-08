@@ -61,7 +61,7 @@ public:
         // Decouverte des modules disponibles (sans chargement).
         const auto dir = moduleDir();
         const int nb_module = registry_.scan_modules(dir);
-        std::string msg = _("engine: created (n=");
+        std::string msg = _("engine: created (Windows_size=");
         msg += std::to_string(cfg_.window_size);
         msg += _(", modules available: ");
         msg += std::to_string(nb_module);
