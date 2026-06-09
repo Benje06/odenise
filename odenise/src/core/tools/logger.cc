@@ -4,6 +4,17 @@
  */
 #include "logger.h"
 
+#if defined(_WIN32) || defined(__MINGW32__)
+static void debug_output(const std::string& s) {
+    OutputDebugStringA((s + "\n").c_str());
+}
+#else
+#   include <cstdio>
+static void debug_output(const std::string& s) {
+    fprintf(stderr, "%s\n", s.c_str());
+}
+#endif
+
 /*** LOGGER ***/
 void Logger::set_log_level(unsigned int lvl){
     std::lock_guard<std::mutex> lock(log_mutex);
@@ -74,6 +85,7 @@ void LogManager::log(const std::string& message){
         handler->log(message);
         handler->flush();
     };
+    if (debug_handler_active_) { debug_output(message); };
 };
 void LogManager::log_error(const std::string& message){
     std::lock_guard<std::mutex> lock(manager_mutex);
@@ -81,4 +93,12 @@ void LogManager::log_error(const std::string& message){
         handler->log_error(message);
         handler->flush();
     };
+    if (debug_handler_active_) {
+        std::string prefix = std::string("*** ") + _("ERROR") + std::string(" *** ");
+        debug_output(prefix + message);
+    };
+};
+void LogManager::add_debug_handler(){
+    std::lock_guard<std::mutex> lock(manager_mutex);
+    debug_handler_active_ = true;
 };

@@ -13,7 +13,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
-
+#include "logger.h"
 #include "JuceAudioLayer.h"
 
 namespace odenise::plugin {

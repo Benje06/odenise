@@ -71,6 +71,7 @@ target_compile_definitions(odenise_plugin
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_MODAL_LOOPS_PERMITTED=0
+        JUCE_DEBUG
     PRIVATE
         AUDIO_EXPORTS
 )

@@ -12,7 +12,12 @@
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
-            "environment": [],
+            "environment": [
+                {
+                    "name": "ODENISE_MODULE_PATH",
+                    "value": "${workspaceFolder}/odenise/build/windows-msvc-cuda/share/odenise/0.1.0/modules"
+                }
+            ],
             "console": "internalConsole",
             "symbolSearchPath": "${workspaceFolder}/build/windows-msvc-cuda"
         },

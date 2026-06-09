@@ -72,5 +72,8 @@ juce::AudioProcessorEditor* JucePlugin::createEditor()
 // ----------------------------------------------------------------------------
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
+    #if defined(JUCE_DEBUG)
+        LogManager::instance().add_debug_handler();
+    #endif
     return new odenise::plugin::JucePlugin();
 }

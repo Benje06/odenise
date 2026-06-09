@@ -53,7 +53,9 @@
         LOGGER void log(const std::string&);
         LOGGER void log_error(const std::string&);
         LOGGER void set_log_level(unsigned int);
+        LOGGER void add_debug_handler();
     private:
+        bool debug_handler_active_ = false;
         std::string                          msg;
         std::mutex                           manager_mutex;
         std::vector<std::shared_ptr<Logger>> handlers;
