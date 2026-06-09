@@ -311,11 +311,6 @@ void JuceEditorComponent::resized()
     
     vu_in_.setBounds( x, vu_top, kVuW, vu_h);
     vu_out_.setBounds( content_end_w, vu_top, kVuW, vu_h);
-
-    
-
-
-
 }
 
 // ----------------------------------------------------------------------------
@@ -358,6 +353,11 @@ void JuceEditorComponent::comboBoxChanged(juce::ComboBox* cb)
         const auto& list = editor->audioInputs();
         if (idx >= static_cast<int>(list.size())) return;
         const int id = list[static_cast<size_t>(idx)].id;
+        const std::string name = list[static_cast<size_t>(idx)].name;
+        // probeDevice avant selectInputInterface pour que les capacites
+        // soient disponibles quand updateInputInfo lit l'AudioInterfaceInfo.
+        const int driver_id = editor->selectedDriverId();
+        plugin_.layer()->probeDevice(driver_id, id, name, true);
         editor->selectInputInterface(id);
         updateInputInfo(id);
     }
@@ -372,6 +372,11 @@ void JuceEditorComponent::comboBoxChanged(juce::ComboBox* cb)
         const auto& list = editor->audioOutputs();
         if (idx >= static_cast<int>(list.size())) return;
         const int id = list[static_cast<size_t>(idx)].id;
+        const std::string name = list[static_cast<size_t>(idx)].name;
+        // probeDevice avant selectOutputInterface pour que les capacites
+        // soient disponibles quand updateOutputInfo lit l'AudioInterfaceInfo.
+        const int driver_id = editor->selectedDriverId();
+        plugin_.layer()->probeDevice(driver_id, id, name, false);
         editor->selectOutputInterface(id);
         updateOutputInfo(id);
     }

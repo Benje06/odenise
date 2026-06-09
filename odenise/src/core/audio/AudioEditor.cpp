@@ -60,6 +60,27 @@ const std::vector<AudioInterfaceInfo>& AudioEditor::audioInputs() const noexcept
     return inputs_;
 }
 
+bool AudioEditor::updateAudioInput(int id, const AudioInterfaceInfo& info) {
+    for (auto& iface : inputs_) {
+        if (iface.id == id) {
+            // Preserve id et name -- met a jour uniquement les capacites
+            iface.max_input_channels   = info.max_input_channels;
+            iface.supported_sample_rates = info.supported_sample_rates;
+            iface.supported_buffer_sizes = info.supported_buffer_sizes;
+            iface.current_sample_rate  = info.current_sample_rate;
+            iface.current_buffer_size  = info.current_buffer_size;
+            iface.current_bit_depth    = info.current_bit_depth;
+            iface.channel_names        = info.channel_names;
+            return true;
+        }
+    }
+    std::string msg_err = error(__func__,
+        _("AudioEditor: unknown input interface id"),
+        std::to_string(id));
+    LOG_ERR(msg_err);
+    return false;
+}
+
 bool AudioEditor::selectInputInterface(int id) {
     for (const auto& iface : inputs_) {
         if (iface.id == id) {
@@ -102,6 +123,27 @@ void AudioEditor::setAudioOutputs(std::vector<AudioInterfaceInfo> outputs) {
 
 const std::vector<AudioInterfaceInfo>& AudioEditor::audioOutputs() const noexcept {
     return outputs_;
+}
+
+bool AudioEditor::updateAudioOutput(int id, const AudioInterfaceInfo& info) {
+    for (auto& iface : outputs_) {
+        if (iface.id == id) {
+            // Preserve id et name -- met a jour uniquement les capacites
+            iface.max_output_channels  = info.max_output_channels;
+            iface.supported_sample_rates = info.supported_sample_rates;
+            iface.supported_buffer_sizes = info.supported_buffer_sizes;
+            iface.current_sample_rate  = info.current_sample_rate;
+            iface.current_buffer_size  = info.current_buffer_size;
+            iface.current_bit_depth    = info.current_bit_depth;
+            iface.channel_names        = info.channel_names;
+            return true;
+        }
+    }
+    std::string msg_err = error(__func__,
+        _("AudioEditor: unknown output interface id"),
+        std::to_string(id));
+    LOG_ERR(msg_err);
+    return false;
 }
 
 bool AudioEditor::selectOutputInterface(int id) {

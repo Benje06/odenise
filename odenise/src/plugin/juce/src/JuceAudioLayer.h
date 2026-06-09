@@ -6,8 +6,15 @@
 //    - odenise::audio::AudioProcessor : moteur odenise
 //    - odenise::audio::AudioEditor    : logique UI / monitoring
 //
-//  scanDevices() interroge le DeviceManager et pousse les AudioInterfaceInfo
-//  dans AudioEditor. AudioProcessor et AudioEditor ignorent JUCE.
+//  scanDrivers()  : liste les drivers disponibles, peuple AudioEditor.
+//                   Appele une seule fois au demarrage.
+//  scanDevices()  : liste les noms des interfaces du driver selectionne
+//                   via getDeviceNames() uniquement -- pas de createDevice().
+//                   Appele a chaque selection de driver dans le combo.
+//  probeDevice()  : interroge les capacites d'une interface nommee via
+//                   createDevice(), et met a jour l'AudioInterfaceInfo
+//                   correspondante dans AudioEditor via updateAudioInput/Output().
+//                   Appele a chaque selection d'interface dans le combo.
 //
 //  Utilisee par JucePlugin (VST3/CLAP) comme membre interne.
 // ============================================================================
@@ -36,12 +43,22 @@ public:
     void scanDrivers();
 
     // -----------------------------------------------------------------------
-    //  Scan des interfaces du driver selectionne.
-    //  Interroge uniquement le device type correspondant a driver_id.
-    //  Remplace les listes inputs/outputs dans AudioEditor.
+    //  Scan des noms d'interfaces du driver selectionne.
+    //  Utilise uniquement getDeviceNames() -- aucun createDevice().
+    //  Remplace les listes inputs/outputs dans AudioEditor (noms seuls,
+    //  capacites a zero jusqu'au probeDevice()).
     //  A appeler sur selection de driver, depuis le thread CTRL.
     // -----------------------------------------------------------------------
     void scanDevices(int driver_id);
+
+    // -----------------------------------------------------------------------
+    //  Interroge les capacites d'une interface nommee (createDevice()).
+    //  Met a jour l'AudioInterfaceInfo correspondante dans AudioEditor
+    //  via updateAudioInput() ou updateAudioOutput().
+    //  A appeler sur selection d'interface dans le combo, depuis le thread CTRL.
+    // -----------------------------------------------------------------------
+    void probeDevice(int driver_id, int interface_id,
+                     const std::string& name, bool want_inputs);
 
     // -----------------------------------------------------------------------
     //  Accesseurs -- non-owning, valides pendant la duree de vie de la couche.
