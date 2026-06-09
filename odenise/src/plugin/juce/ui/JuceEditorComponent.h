@@ -69,11 +69,15 @@ public:
     void resized()                override;
 
 private:
+
     void timerCallback()                       override;
     void comboBoxChanged(juce::ComboBox* cb)   override;
 
     // Peuple les combos d'interfaces depuis audioInputs() / audioOutputs().
     void populateCombos();
+    
+    // Repeuple les combos interfaces + canaux apres changement de driver.
+    void populateInterfaceCombos();
 
     // Met a jour label + combo canaux + VuMeter pour la section entree.
     void updateInputInfo(int interface_id);

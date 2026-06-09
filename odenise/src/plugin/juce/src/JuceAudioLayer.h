@@ -29,13 +29,19 @@ public:
     JuceAudioLayer& operator=(const JuceAudioLayer&) = delete;
 
     // -----------------------------------------------------------------------
-    //  Scan des peripheriques audio disponibles.
-    //  Interroge le DeviceManager JUCE, construit les AudioInterfaceInfo
-    //  (sample rates, bits, canaux in/out detectes), et les pousse dans
-    //  AudioEditor via setAudioInterfaces().
-    //  A appeler depuis le thread CTRL, jamais depuis le thread RT.
+    //  Scan des drivers audio disponibles.
+    //  Interroge getAvailableDeviceTypes() et pousse dans AudioEditor.
+    //  A appeler une seule fois au demarrage, depuis le thread CTRL.
     // -----------------------------------------------------------------------
-    void scanDevices();
+    void scanDrivers();
+
+    // -----------------------------------------------------------------------
+    //  Scan des interfaces du driver selectionne.
+    //  Interroge uniquement le device type correspondant a driver_id.
+    //  Remplace les listes inputs/outputs dans AudioEditor.
+    //  A appeler sur selection de driver, depuis le thread CTRL.
+    // -----------------------------------------------------------------------
+    void scanDevices(int driver_id);
 
     // -----------------------------------------------------------------------
     //  Accesseurs -- non-owning, valides pendant la duree de vie de la couche.

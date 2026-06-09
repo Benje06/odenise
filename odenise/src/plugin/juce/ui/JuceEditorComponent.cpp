@@ -222,6 +222,7 @@ JuceEditorComponent::JuceEditorComponent(JucePlugin& plugin)
 JuceEditorComponent::~JuceEditorComponent()
 {
     stopTimer();
+    combo_driver_  .removeListener(this);
     combo_in_iface_.removeListener(this);
     combo_in_ch_   .removeListener(this);
     combo_out_iface_.removeListener(this);
@@ -339,7 +340,18 @@ void JuceEditorComponent::comboBoxChanged(juce::ComboBox* cb)
     auto* editor = plugin_.layer()->editor();
     if (!editor) return;
 
-    if (cb == &combo_in_iface_)
+    if (cb == &combo_driver_)
+    {
+        const int idx = cb->getSelectedId() - 1;
+        if (idx < 0) return;
+        const auto& list = editor->audioDrivers();
+        if (idx >= static_cast<int>(list.size())) return;
+        const int id = list[static_cast<size_t>(idx)].id;
+        editor->selectDriver(id);
+        plugin_.layer()->scanDevices(id);
+        populateInterfaceCombos();
+    }
+    else if (cb == &combo_in_iface_)
     {
         const int idx = cb->getSelectedId() - 1;
         if (idx < 0) return;
@@ -375,12 +387,28 @@ void JuceEditorComponent::populateCombos()
     auto* editor = plugin_.layer()->editor();
     if (!editor) return;
 
+    combo_driver_.clear(juce::dontSendNotification);
+    int jid = 1;
+    for (const auto& drv : editor->audioDrivers())
+        combo_driver_.addItem(drv.name, jid++);
+}
+
+// ----------------------------------------------------------------------------
+void JuceEditorComponent::populateInterfaceCombos()
+{
+    auto* editor = plugin_.layer()->editor();
+    if (!editor) return;
+
     combo_in_iface_.clear(juce::dontSendNotification);
+    combo_in_ch_   .clear(juce::dontSendNotification);
+    label_in_info_ .setText("", juce::dontSendNotification);
     int jid = 1;
     for (const auto& iface : editor->audioInputs())
         combo_in_iface_.addItem(iface.name, jid++);
 
     combo_out_iface_.clear(juce::dontSendNotification);
+    combo_out_ch_   .clear(juce::dontSendNotification);
+    label_out_info_ .setText("", juce::dontSendNotification);
     jid = 1;
     for (const auto& iface : editor->audioOutputs())
         combo_out_iface_.addItem(iface.name, jid++);

@@ -16,7 +16,7 @@ JucePlugin::JucePlugin()
 {
     // Scan initial des peripheriques disponibles.
     // L'editeur pourra relancer un scan via layer_.scanDevices().
-    layer_.scanDevices();
+    layer_.scanDrivers();
 }
 
 // ----------------------------------------------------------------------------
@@ -73,6 +73,9 @@ juce::AudioProcessorEditor* JucePlugin::createEditor()
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     #if defined(JUCE_DEBUG)
+        // En debug sous AudioPluginHost, stdout/stderr ne sont pas visibles dans
+        // la console VS Code. On active le handler OutputDebugString pour que les
+        // logs odenise remontent via cppvsdbg.
         LogManager::instance().add_debug_handler();
     #endif
     return new odenise::plugin::JucePlugin();

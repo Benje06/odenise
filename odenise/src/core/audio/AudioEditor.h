@@ -70,6 +70,15 @@ struct AudioInterfaceInfo {
 };
 
 // ---------------------------------------------------------------------------
+//  AudioDriver -- driver audio disponible (WASAPI, WASAPI Exclusive, ASIO...).
+//  Peuple par la couche audio (JuceAudioLayer::scanDrivers()).
+// ---------------------------------------------------------------------------
+struct AudioDriver {
+    int         id;
+    std::string name;
+};
+
+// ---------------------------------------------------------------------------
 //  AudioEditor -- logique UI de configuration et de monitoring.
 // ---------------------------------------------------------------------------
 class AudioEditor {
@@ -79,6 +88,14 @@ public:
 
     AudioEditor(const AudioEditor&)            = delete;
     AudioEditor& operator=(const AudioEditor&) = delete;
+
+    // -----------------------------------------------------------------------
+    //  Drivers audio -- peuples par JuceAudioLayer::scanDrivers() au demarrage.
+    // -----------------------------------------------------------------------
+    AUDIO void setAudioDrivers(std::vector<AudioDriver> drivers);
+    AUDIO const std::vector<AudioDriver>& audioDrivers() const noexcept;
+    AUDIO bool selectDriver(int id);
+    AUDIO int  selectedDriverId() const noexcept { return selected_driver_id_; }
 
     // -----------------------------------------------------------------------
     //  Interfaces audio d'entree -- interfaces ayant max_input_channels > 0.
@@ -139,9 +156,11 @@ private:
     AudioProcessor* processor_;
     Engine*         engine_;
 
-    // Interfaces separees par direction
+    std::vector<AudioDriver>        drivers_;
     std::vector<AudioInterfaceInfo> inputs_;
     std::vector<AudioInterfaceInfo> outputs_;
+
+    int    selected_driver_id_  = -1;
 
     int    selected_input_id_   = -1;
     int    selected_input_ch_   =  0;

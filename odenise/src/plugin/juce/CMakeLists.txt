@@ -67,6 +67,7 @@ target_sources(odenise_plugin
 target_compile_definitions(odenise_plugin
     PUBLIC
         JUCE_WINDOWS
+        JUCE_ASIO=1
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0

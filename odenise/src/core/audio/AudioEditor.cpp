@@ -16,6 +16,39 @@ AudioEditor::AudioEditor(AudioProcessor* processor)
 AudioEditor::~AudioEditor() {}
 
 // ----------------------------------------------------------------------------
+//  Drivers audio
+// ----------------------------------------------------------------------------
+
+void AudioEditor::setAudioDrivers(std::vector<AudioDriver> drivers) {
+    drivers_ = std::move(drivers);
+}
+
+const std::vector<AudioDriver>& AudioEditor::audioDrivers() const noexcept {
+    return drivers_;
+}
+
+bool AudioEditor::selectDriver(int id) {
+    for (const auto& drv : drivers_) {
+        if (drv.id == id) {
+            selected_driver_id_ = id;
+            // reset interfaces et selections sur changement de driver
+            inputs_.clear();
+            outputs_.clear();
+            selected_input_id_  = -1;
+            selected_input_ch_  =  0;
+            selected_output_id_ = -1;
+            selected_output_ch_ =  0;
+            return true;
+        }
+    }
+    std::string msg_err = error(__func__,
+        _("AudioEditor: unknown driver id"),
+        std::to_string(id));
+    LOG_ERR(msg_err);
+    return false;
+}
+
+// ----------------------------------------------------------------------------
 //  Interfaces d'entree
 // ----------------------------------------------------------------------------
 
