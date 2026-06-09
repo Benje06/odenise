@@ -59,14 +59,19 @@ class AudioProcessor;
 // ---------------------------------------------------------------------------
 struct AudioInterfaceInfo {
     int                      id;
-    std::string              name;
     int                      max_input_channels;
     int                      max_output_channels;
+    int                      input_latency_samples = 0; // valeur active (0 = inconnue)
+    int                      output_latency_samples = 0; // valeur active (0 = inconnue)
+    int                      current_sample_rate  = 0; // valeur active (0 = inconnue)
+    int                      default_buffer_size  = 0; 
+    int                      current_buffer_size  = 0; // valeur active en samples
+    int                      default_bit_depth    = 0; // 0 si non reporte par le driver
+    int                      current_bit_depth    = 0; // 0 si non reporte par le driver
+    size_t                   xrun_count           = 0;
+    std::string              name;
     std::vector<int>         supported_sample_rates;   // plage complete supportee
     std::vector<int>         supported_buffer_sizes;   // plage complete supportee
-    int                      current_sample_rate  = 0; // valeur active (0 = inconnue)
-    int                      current_buffer_size  = 0; // valeur active en samples
-    int                      current_bit_depth    = 0; // 0 si non reporte par le driver
     std::vector<std::string> channel_names;            // noms reels des canaux (driver)
 };
 

@@ -85,15 +85,25 @@ static std::string buildInfoString(const odenise::audio::AudioInterfaceInfo& ifa
 {
     std::string s;
 
+   
     // -- Bloc "Actuel" -------------------------------------------------------
     const int   sr     = iface.current_sample_rate;
-    const int   buf    = iface.current_buffer_size;
+    const int   buf    = (iface.current_buffer_size > 0)
+                        ? iface.current_buffer_size
+                        : iface.default_buffer_size;
+
+    const int   cur_buf = iface.current_buffer_size;
+    const int   def_buf = iface.default_buffer_size;
+
+    const int   lat_smpl = show_inputs 
+                    ? iface.input_latency_samples 
+                    : iface.output_latency_samples;
     const float lat_ms = (sr > 0 && buf > 0)
                          ? (static_cast<float>(buf) / sr) * 1000.0f
                          : 0.0f;
+    float sr_khz = sr / 1000.0f;
     if (sr > 0) {
-        char tmp[16];
-        const float sr_khz = sr / 1000.0f;
+        char tmp[16];  
         std::snprintf(tmp, sizeof(tmp),
             floorf(sr_khz) == sr_khz ? "%.0fKHz " : "%.1fKHz ",
             sr_khz);
@@ -101,6 +111,7 @@ static std::string buildInfoString(const odenise::audio::AudioInterfaceInfo& ifa
     } else {
         s += "Sample rate: N/A ";
     }
+    
     s += (iface.current_bit_depth > 0) ? std::to_string(iface.current_bit_depth) : "N/A";
     s += "bits ";
     //s += "Buffer Size: ";
@@ -109,7 +120,9 @@ static std::string buildInfoString(const odenise::audio::AudioInterfaceInfo& ifa
         s += " samples "; 
     }else{
         s += " N/A ";
-    }           
+    }
+    s += "def: " + std::to_string(def_buf) + " ";   
+    s += "cur: " + std::to_string(cur_buf) + " ";
     if (lat_ms > 0.0f) {
         // lat_ms avec 1 decimale
         char lat_buf[16];
@@ -117,8 +130,10 @@ static std::string buildInfoString(const odenise::audio::AudioInterfaceInfo& ifa
         //s += "\nLatence: ";
         s += lat_buf;
         s += " ms  ";
+    }else{
+        s += "lat: N/A";
     }
- 
+    s+= "lat sample: " + std::to_string(lat_smpl) + " \n";
     // -- Canaux --------------------------------------------------------------
     const int ch = show_inputs ? iface.max_input_channels : iface.max_output_channels;
     s += std::to_string(ch);
@@ -133,10 +148,21 @@ static std::string buildInfoString(const odenise::audio::AudioInterfaceInfo& ifa
     if (!iface.supported_sample_rates.empty()) {
         s += "\nRates: ";
         for (int r : iface.supported_sample_rates) {
-            s += (r == sr) ? " [" + std::to_string(r) + "]"
-                           : "  " + std::to_string(r);
+            const float r_khz = r / 1000.0f;
+            char tmp[16];
+            std::snprintf(tmp, sizeof(tmp),
+            floorf(r_khz) == r_khz ? "%.0fKHz " : "%.1fKHz ",
+            r_khz);
+            
+            if (r_khz == sr_khz) {
+                s += " [";
+                s += tmp;
+                s += "]";
+            }else{
+                s += "  ";
+                s += tmp;
+            }                          
         }
-        s += " Hz";
     }
 
     // -- Buffer sizes disponibles (actuel entre [ ]) -------------------------
@@ -222,11 +248,11 @@ JuceEditorComponent::JuceEditorComponent(JucePlugin& plugin)
 JuceEditorComponent::~JuceEditorComponent()
 {
     stopTimer();
-    combo_driver_  .removeListener(this);
+    combo_driver_.removeListener(this);
     combo_in_iface_.removeListener(this);
-    combo_in_ch_   .removeListener(this);
+    combo_in_ch_.removeListener(this);
     combo_out_iface_.removeListener(this);
-    combo_out_ch_  .removeListener(this);
+    combo_out_ch_.removeListener(this);
 }
 
 // ----------------------------------------------------------------------------

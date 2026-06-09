@@ -146,13 +146,18 @@ void JuceAudioLayer::probeDevice(int driver_id, int interface_id,
     for (int bs : dev->getAvailableBufferSizes())
         info.supported_buffer_sizes.push_back(bs);
 
-    info.current_buffer_size = dev->getDefaultBufferSize();
-    //wrong method
-    info.current_sample_rate = info.supported_sample_rates.empty()
-                               ? 0
-                               : info.supported_sample_rates.front();
-    info.current_bit_depth   = 0; // non disponible sans open()
-
+    // Valeurs courantes rapportees par le driver sans open().
+    // Aucun fallback -- on affiche uniquement ce que le driver retourne.
+    info.current_sample_rate = static_cast<int>(dev->getCurrentSampleRate());
+    if( want_inputs ){
+        info.input_latency_samples =  dev->getInputLatencyInSamples();
+    }else{
+        info.output_latency_samples =  dev->getOutputLatencyInSamples();
+    }
+    info.default_buffer_size = dev->getDefaultBufferSize();
+    info.current_buffer_size = dev->getCurrentBufferSizeSamples();
+    info.current_bit_depth   = dev->getCurrentBitDepth();
+    info.xrun_count          = dev->getXRunCount();
     const int n = want_inputs ? n_in : n_out;
     const auto ch_names = want_inputs
                           ? dev->getInputChannelNames()
