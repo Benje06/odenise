@@ -52,91 +52,10 @@ void JuceAudioLayer::scanDrivers()
 }
 
 // ----------------------------------------------------------------------------
-//  tryDestroyDevice -- detruit un AudioIODevice via un pointeur opaque.
-//
-//  Fonction C pure (pas de C++ dans le scope) pour contourner MSVC C2712 :
-//  __try/__except est interdit dans toute fonction ayant des objets C++ a
-//  destructeur dans le meme scope de compilation. En isolant le delete dans
-//  une fonction C, on satisfait cette contrainte.
-//
-//  Retourne true si la destruction s'est passee sans exception SEH.
-// ----------------------------------------------------------------------------
-#if defined(_MSC_VER)
-static int tryDestroyDevice(void* raw_dev)
-{
-    __try {
-        delete static_cast<juce::AudioIODevice*>(raw_dev);
-        return 1;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return 0;
-    }
-}
-#endif
-
-// ----------------------------------------------------------------------------
-//  probeDevice -- interroge un AudioIODevice sans open().
-//
-//  Cree le device, lit ses capacites, puis le detruit via tryDestroyDevice
-//  (protege SEH sur MSVC). Si le device est absent ou leve une exception a
-//  la destruction (ex. ASIO hors tension), retourne un AudioInterfaceInfo
-//  vide (max_input_channels = max_output_channels = 0).
-// ----------------------------------------------------------------------------
-static odenise::audio::AudioInterfaceInfo probeDevice(
-    juce::AudioIODeviceType* device_type,
-    const juce::String&      input_name,
-    const juce::String&      output_name,
-    bool                     want_inputs)
-{
-    odenise::audio::AudioInterfaceInfo info;
-
-    juce::AudioIODevice* dev = device_type->createDevice(output_name, input_name);
-    if (dev == nullptr) return info;
-
-    const int n_in  = dev->getInputChannelNames().size();
-    const int n_out = dev->getOutputChannelNames().size();
-    const int n     = want_inputs ? n_in : n_out;
-
-    if (n > 0) {
-        info.max_input_channels  = n_in;
-        info.max_output_channels = n_out;
-
-        for (double sr : dev->getAvailableSampleRates())
-            info.supported_sample_rates.push_back(static_cast<int>(sr));
-        for (int bs : dev->getAvailableBufferSizes())
-            info.supported_buffer_sizes.push_back(bs);
-
-        info.current_buffer_size = dev->getDefaultBufferSize();
-        info.current_sample_rate = info.supported_sample_rates.empty()
-                                   ? 0
-                                   : info.supported_sample_rates.front();
-        info.current_bit_depth   = 0; // non disponible sans open()
-
-        const auto ch_names = want_inputs
-                              ? dev->getInputChannelNames()
-                              : dev->getOutputChannelNames();
-        for (int ch = 0; ch < n; ++ch)
-            info.channel_names.push_back(ch_names[ch].toStdString());
-    }
-
-    // Destruction protegee -- un device ASIO hors tension peut lever une
-    // exception SEH a la destruction (handle COM invalide).
-#if defined(_MSC_VER)
-    if (!tryDestroyDevice(dev)) {
-        // Exception SEH a la destruction : device invalide, on rejette les infos.
-        info = odenise::audio::AudioInterfaceInfo{};
-    }
-#else
-    delete dev;
-#endif
-
-    return info;
-}
-
-// ----------------------------------------------------------------------------
-//  scanDevices -- scanne les interfaces du driver identifie par driver_id.
-//  driver_id correspond a l'index dans getAvailableDeviceTypes().
-//  Remplace entierement les listes inputs/outputs dans AudioEditor.
+//  scanDevices -- liste les noms des interfaces via getDeviceNames() uniquement.
+//  Aucun createDevice() -- pas d'ouverture de driver ASIO.
+//  Les capacites (sample rates, buffers, channel names) restent a zero jusqu'a
+//  ce que probeDevice() soit appele sur selection d'une interface.
 // ----------------------------------------------------------------------------
 void JuceAudioLayer::scanDevices(int driver_id)
 {
@@ -158,55 +77,21 @@ void JuceAudioLayer::scanDevices(int driver_id)
     int input_id  = 0;
     int output_id = 0;
 
-    // --- Entrees ------------------------------------------------------------
     for (const auto& name : device_type->getDeviceNames(true))
     {
-        auto info = probeDevice(device_type, name, "", true);
-        if (info.max_input_channels <= 0) {
-            std::string msg_err = error(__func__,
-                _("JuceAudioLayer: input device unavailable"),
-                name.toStdString());
-            LOG_ERR(msg_err);
-            continue;
-        }
-
-        info.id   = input_id++;
-        info.name = name.toStdString();
-        info.max_output_channels = 0;
-
-        std::string msg = _("JuceAudioLayer: input  '");
-        msg += info.name;
-        msg += "' ch="; msg += std::to_string(info.max_input_channels);
-        msg += " sr="; msg += std::to_string(info.current_sample_rate);
-        msg += " buf="; msg += std::to_string(info.current_buffer_size);
-        LOG(msg);
-
+        odenise::audio::AudioInterfaceInfo info;
+        info.id                 = input_id++;
+        info.name               = name.toStdString();
+        info.max_input_channels = 1; // inconnu avant probe -- non nul pour apparaitre dans le combo
         inputs.push_back(std::move(info));
     }
 
-    // --- Sorties ------------------------------------------------------------
     for (const auto& name : device_type->getDeviceNames(false))
     {
-        auto info = probeDevice(device_type, "", name, false);
-        if (info.max_output_channels <= 0) {
-            std::string msg_err = error(__func__,
-                _("JuceAudioLayer: output device unavailable"),
-                name.toStdString());
-            LOG_ERR(msg_err);
-            continue;
-        }
-
-        info.id   = output_id++;
-        info.name = name.toStdString();
-        info.max_input_channels = 0;
-
-        std::string msg = _("JuceAudioLayer: output '");
-        msg += info.name;
-        msg += "' ch="; msg += std::to_string(info.max_output_channels);
-        msg += " sr="; msg += std::to_string(info.current_sample_rate);
-        msg += " buf="; msg += std::to_string(info.current_buffer_size);
-        LOG(msg);
-
+        odenise::audio::AudioInterfaceInfo info;
+        info.id                  = output_id++;
+        info.name                = name.toStdString();
+        info.max_output_channels = 1; // inconnu avant probe -- non nul pour apparaitre dans le combo
         outputs.push_back(std::move(info));
     }
 
@@ -220,5 +105,76 @@ void JuceAudioLayer::scanDevices(int driver_id)
     LOG(msg);
 }
 
+// ----------------------------------------------------------------------------
+//  probeDevice -- interroge les capacites d'une interface via createDevice().
+//  Appele uniquement sur selection d'une interface dans le combo UI.
+//  Met a jour l'AudioInterfaceInfo dans AudioEditor via updateAudioInput/Output.
+// ----------------------------------------------------------------------------
+void JuceAudioLayer::probeDevice(int driver_id, int interface_id,
+                                 const std::string& name, bool want_inputs)
+{
+    const auto& device_types = device_manager_.getAvailableDeviceTypes();
+    if (driver_id < 0 || driver_id >= device_types.size()) return;
+
+    auto* device_type = device_types[driver_id];
+    if (!device_type) return;
+
+    const juce::String jname(name);
+    juce::AudioIODevice* dev = want_inputs
+        ? device_type->createDevice("", jname)
+        : device_type->createDevice(jname, "");
+
+    if (dev == nullptr) {
+        std::string msg_err = error(__func__,
+            _("JuceAudioLayer: createDevice returned null"),
+            name);
+        LOG_ERR(msg_err);
+        return;
+    }
+
+    odenise::audio::AudioInterfaceInfo info;
+    info.id   = interface_id;
+    info.name = name;
+
+    const int n_in  = dev->getInputChannelNames().size();
+    const int n_out = dev->getOutputChannelNames().size();
+    info.max_input_channels  = n_in;
+    info.max_output_channels = n_out;
+
+    for (double sr : dev->getAvailableSampleRates())
+        info.supported_sample_rates.push_back(static_cast<int>(sr));
+    for (int bs : dev->getAvailableBufferSizes())
+        info.supported_buffer_sizes.push_back(bs);
+
+    info.current_buffer_size = dev->getDefaultBufferSize();
+    //wrong method
+    info.current_sample_rate = info.supported_sample_rates.empty()
+                               ? 0
+                               : info.supported_sample_rates.front();
+    info.current_bit_depth   = 0; // non disponible sans open()
+
+    const int n = want_inputs ? n_in : n_out;
+    const auto ch_names = want_inputs
+                          ? dev->getInputChannelNames()
+                          : dev->getOutputChannelNames();
+    for (int ch = 0; ch < n; ++ch)
+        info.channel_names.push_back(ch_names[ch].toStdString());
+
+    delete dev;
+
+    if (want_inputs)
+        editor_.updateAudioInput(interface_id, info);
+    else
+        editor_.updateAudioOutput(interface_id, info);
+
+    std::string msg = want_inputs
+                      ? _("JuceAudioLayer: probed input  '")
+                      : _("JuceAudioLayer: probed output '");
+    msg += name;
+    msg += "' ch="; msg += std::to_string(n);
+    msg += " sr="; msg += std::to_string(info.current_sample_rate);
+    msg += " buf="; msg += std::to_string(info.current_buffer_size);
+    LOG(msg);
+}
 
 } // namespace odenise::plugin
