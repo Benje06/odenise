@@ -114,7 +114,7 @@ private:
     static constexpr int kLabelW  = 20;  // largeur colonne labels
     static constexpr int kComboInterfaceW  = 120;
     static constexpr int kComboChannelW  = 60;
-    static constexpr int kInfoH   = 80;
+    static constexpr int kInfoH   = 180;
     static constexpr int kGap     = 4;
     static constexpr int kRowH    = 20;
     static constexpr int kSepH    = 16;  // separateur entre sections

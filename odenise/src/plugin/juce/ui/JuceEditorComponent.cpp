@@ -88,19 +88,34 @@ static std::string buildInfoString(const odenise::audio::AudioInterfaceInfo& ifa
    
     // -- Bloc "Actuel" -------------------------------------------------------
     const int   sr     = iface.current_sample_rate;
+    s += "sr: ";
+    s += std::to_string(sr);
+
     const int   buf    = (iface.current_buffer_size > 0)
                         ? iface.current_buffer_size
                         : iface.default_buffer_size;
-
     const int   cur_buf = iface.current_buffer_size;
     const int   def_buf = iface.default_buffer_size;
+    s += "\nbuf: ";
+    s += std::to_string(buf);
+    s += "\ncur_buf: ";
+    s += std::to_string(cur_buf);
+    s += "\ndef_buf: ";
+    s += std::to_string(def_buf);
 
     const int   lat_smpl = show_inputs 
                     ? iface.input_latency_samples 
-                    : iface.output_latency_samples;
+                    : iface.output_latency_samples; 
     const float lat_ms = (sr > 0 && buf > 0)
-                         ? (static_cast<float>(buf) / sr) * 1000.0f
+                         ? (static_cast<float>(buf) / static_cast<float>(sr)) * 1000.0f
                          : 0.0f;
+    s += "\nlat_smpl: ";
+    s += std::to_string(lat_smpl);
+    s += "\niface.input_latency_samples: ";
+    s += std::to_string(iface.input_latency_samples);
+    s += "\niface.output_latency_samples: ";
+    s += std::to_string(iface.output_latency_samples);
+    s += "\n";
     float sr_khz = sr / 1000.0f;
     if (sr > 0) {
         char tmp[16];  
