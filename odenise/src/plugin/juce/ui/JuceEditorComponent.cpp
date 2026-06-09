@@ -427,8 +427,13 @@ void JuceEditorComponent::updateInputInfo(int interface_id)
                                juce::dontSendNotification);
 
         combo_in_ch_.clear(juce::dontSendNotification);
-        for (int ch = 0; ch < iface.max_input_channels; ++ch)
-            combo_in_ch_.addItem("In " + std::to_string(ch + 1), ch + 1);
+        for (int ch = 0; ch < iface.max_input_channels; ++ch) {
+            const std::string label =
+                (ch < static_cast<int>(iface.channel_names.size()) && !iface.channel_names[ch].empty())
+                ? iface.channel_names[ch]
+                : "In " + std::to_string(ch + 1);
+            combo_in_ch_.addItem(label, ch + 1);
+        }
 
         vu_in_.setNumChannels(juce::jlimit(1, VuMeter::kMaxChannels,
                                            iface.max_input_channels));
@@ -452,8 +457,13 @@ void JuceEditorComponent::updateOutputInfo(int interface_id)
                                 juce::dontSendNotification);
 
         combo_out_ch_.clear(juce::dontSendNotification);
-        for (int ch = 0; ch < iface.max_output_channels; ++ch)
-            combo_out_ch_.addItem("Out " + std::to_string(ch + 1), ch + 1);
+        for (int ch = 0; ch < iface.max_output_channels; ++ch) {
+            const std::string label =
+                (ch < static_cast<int>(iface.channel_names.size()) && !iface.channel_names[ch].empty())
+                ? iface.channel_names[ch]
+                : "Out " + std::to_string(ch + 1);
+            combo_out_ch_.addItem(label, ch + 1);
+        }
 
         vu_out_.setNumChannels(juce::jlimit(1, VuMeter::kMaxChannels,
                                             iface.max_output_channels));

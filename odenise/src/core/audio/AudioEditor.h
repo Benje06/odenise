@@ -62,11 +62,12 @@ struct AudioInterfaceInfo {
     std::string      name;
     int              max_input_channels;
     int              max_output_channels;
-    std::vector<int> supported_sample_rates;   // plage complete supportee
-    std::vector<int> supported_buffer_sizes;   // plage complete supportee
-    int              current_sample_rate  = 0; // valeur active (0 = inconnue)
-    int              current_buffer_size  = 0; // valeur active en samples
-    int              current_bit_depth    = 0; // 0 si non reporte par le driver
+    std::vector<int>         supported_sample_rates;   // plage complete supportee
+    std::vector<int>         supported_buffer_sizes;   // plage complete supportee
+    int                      current_sample_rate  = 0; // valeur active (0 = inconnue)
+    int                      current_buffer_size  = 0; // valeur active en samples
+    int                      current_bit_depth    = 0; // 0 si non reporte par le driver
+    std::vector<std::string> channel_names;            // noms reels des canaux (driver)
 };
 
 // ---------------------------------------------------------------------------
