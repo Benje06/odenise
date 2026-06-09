@@ -3,7 +3,7 @@
 // ============================================================================
 #include "audio_chain.h"
 
-namespace odenise::chain {
+namespace odenise {
 
 // ---------------------------------------------------------------------------
 //  Fonctions d'execution pre-resolues -- appelees en RT via pointeur.

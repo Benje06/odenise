@@ -8,17 +8,23 @@
 #include "engine.h"
 #include "audio_chain.h"
 
+#include <algorithm>    // std::min, std::max
+#include <chrono>       // std::chrono::steady_clock
+#include <cstring>      // std::memcpy
+#include <new>          // std::nothrow
+#include <random>       // std::mt19937, std::uniform_real_distribution
+#include <thread>       // std::this_thread::yield
 #include <cstddef>      // std::size_t, std::byte
 #include <vector>       // std::vector
 
 // ============================================================================
 //  CpuBackendContext -- contexte de ressource CPU.
 //  Fourni par CpuBackendImpl a chaque module lors de l'installation.
-//  Possede le scratch buffer pre-alloue a window_size_max * sizeof(float).
+//  Possede le scratch buffer pre-alloue a ring_size_max * sizeof(float).
 // ============================================================================
 class CpuBackendContext final : public odenise::BackendContext {
 public:
-    explicit CpuBackendContext(int window_size_max);
+    explicit CpuBackendContext(size_t ring_size_max);
 
     // [CTRL] Retourne le debut du scratch buffer.
     void* scratch_buf(std::size_t bytes) noexcept override;
@@ -30,7 +36,7 @@ public:
     int   backend_type() const noexcept override;
 
     // [CTRL] Redimensionne le scratch buffer (appele par reconfigure).
-    void resize(int window_size_max);
+    void resize(size_t ring_size);
 
 private:
     std::vector<std::byte> scratch_;
@@ -44,7 +50,7 @@ private:
 // ============================================================================
 class CpuBackendImpl final : public odenise::BackendBase {
 public:
-    explicit CpuBackendImpl(int sample_rate, int window_size_max);
+    explicit CpuBackendImpl(odenise::EngineCaps e_caps);
     ~CpuBackendImpl() override;
 
     // -----------------------------------------------------------------------
@@ -63,8 +69,13 @@ public:
     // -----------------------------------------------------------------------
     //  reconfigure -- suspend threads, redimensionne les ressources, reprend.
     // -----------------------------------------------------------------------
-    odenise::Status reconfigure(const odenise::EngineCaps&    caps,
-                                const odenise::RuntimeConfig& cfg) override;
+    // called by engine to configure the backend
+    odenise::Status reconfigure( const odenise::EngineCaps&    e_caps,
+                                 const odenise::RuntimeConfig& cfg) override;
+    // Module inherit function
+    odenise::Status reconfigure( const odenise::BackendCaps& b_caps,
+                                 const odenise::RuntimeConfig& cfg,
+                                 odenise::ApplyResult& how) override;
 
     // -----------------------------------------------------------------------
     //  install_module / uninstall_module
@@ -80,7 +91,7 @@ public:
     // -----------------------------------------------------------------------
     odenise::Status process(const float* const* in,
                             float*              out,
-                            int                 num_frames) noexcept override;
+                            size_t                 num_frames) noexcept override;
 
     // -----------------------------------------------------------------------
     //  setAudioIO -- set les entrees/sorties audio.
@@ -100,16 +111,16 @@ public:
     bool            install(odenise::BackendContext*)    override;
     void            uninstall(odenise::BackendContext*) noexcept override;
     void            set_param(odenise::ParamId, float)  noexcept override;
-    odenise::Status reconfigure(const odenise::RuntimeConfig&) override;
     void*           output_buf()   noexcept override;
     void            set_input(const void*) noexcept override;
-    void            process(int)   noexcept override;
+    void            process(size_t)   noexcept override;
 
 private:
     int                         sample_rate_;
-    int                         window_size_max_;
+    size_t                      ring_size_max_;
     CpuBackendContext           ctx_;
-    odenise::chain::AudioChain  chain_;
+    odenise::EngineCaps         e_caps_;
+    odenise::AudioChain         chain_;
     odenise::ModuleBase*        first_module_ = nullptr;
     odenise::ModuleBase*        last_module_  = nullptr;
     bool                        nodes_empty_  = true;
@@ -118,5 +129,4 @@ private:
 // ============================================================================
 //  Point d'entree du module.
 // ============================================================================
-extern "C" ODENISE_EXPORT odenise::ModuleBase* odenise_module_entry(int sample_rate,
-                                                                     int window_size_max);
+extern "C" ODENISE_EXPORT odenise::ModuleBase* odenise_module_entry(odenise::EngineCaps e_caps);

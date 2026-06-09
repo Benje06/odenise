@@ -29,7 +29,7 @@ set_target_properties(odenise_chain PROPERTIES
 target_include_directories(odenise_chain
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/interfaces>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/engine>
         $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>
     PRIVATE
         ${CMAKE_SOURCE_DIR}/src/core/registry

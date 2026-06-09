@@ -113,8 +113,10 @@ bool ModuleRegistry::probe_file(const std::filesystem::path& file) {
         return false;
     }
 
+    odenise::EngineCaps e_caps;
+    e_caps.ring_size_max=0;
     // Objet temporaire pour lire info_c() uniquement.
-    ModuleBase* probe = entry(0, 0);
+    ModuleBase* probe = entry(e_caps);
     if (!probe) {
         msg_err = error(__func__,
             _("Loader cannot probe '") + subdir + _("' module '") + fname + "'",
@@ -280,11 +282,14 @@ bool ModuleRegistry::load_module(size_t available_id) {
         return false;
     }
 
-    ModuleBase* module = entry(0, 0);
+    odenise::EngineCaps e_caps;
+    e_caps.ring_size_max = 0;
+
+    ModuleBase* module = entry(e_caps);
     if (!module) {
         std::string msg_err = error(__func__,
             _("load_module: entry returned null for '") + am->info.name + "'",
-            _("odenise_module_entry(0,0) returned null"));
+            _("odenise_module_entry(e_caps) returned null"));
         LOG_ERR(msg_err);
         dl_close(handle);
         return false;

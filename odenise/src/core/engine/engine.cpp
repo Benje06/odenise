@@ -8,6 +8,7 @@
 // install_module() / uninstall_module().
 #include "engine.h"
 #include "module_registry.h"
+#include "audio_chain.h"
 
 namespace odenise {
 
@@ -42,35 +43,77 @@ std::filesystem::path moduleDir() {
 
 BackendCaps toBackendCaps(const OdeniseBackendCapsC& b_caps) {
     BackendCaps bc;
-    bc.name         = b_caps.name ? b_caps.name : "";
+
+    bc.backend_id   =  b_caps.backend_id;
+    bc.backend_type =  b_caps.backend_type;
+    bc.backend_name =  b_caps.backend_name ? b_caps.backend_name : "";
+    bc.gpu_family   =  b_caps.gpu_family ? b_caps.gpu_family : "";
     bc.is_gpu       = (b_caps.is_gpu != 0);
     bc.vram_bytes   = static_cast<std::size_t>(b_caps.vram_bytes);
-    bc.cc_major     = b_caps.cc_major;
-    bc.cc_minor     = b_caps.cc_minor;
+    bc.cc_major     =  b_caps.cc_major;
+    bc.cc_minor     =  b_caps.cc_minor;
     bc.has_fp16     = (b_caps.has_fp16 != 0);
     bc.has_tensor   = (b_caps.has_tensor != 0);
-    bc.backend_type = b_caps.backend_type;
+
     return bc;
 }
 
 class EngineImpl final : public Engine {
+/*  EngineCaps
+        int     sample_rate     = 48000;
+        int     window_size_max = 4096;   // taille de fenetre max pre-allouee
+        int     max_bands       = 48;     // nb de bandes perceptives max
+        int     max_tracks      = 16;
+        int     max_block       = 2048;   // taille de bloc hote max (dim. rings)
+        bool    prealloc_c2c    = false;  // autorise bascule R2C<->C2C a chaud
+        bool    share_fft_work  = true;   // workspace cuFFT unique partage
+        size_t  backend_id      = 0;      // 0 = AUTO ; sinon id du registry available
+
+    RuntimeConfig
+        size_t               backend_id = 0;    // 0 = AUTO ; sinon un des id du registre
+        std::vector<odenise::ChainElement>  modules;           // TODO: reflete l'audio_chain liste
+
+        int     window_size    = 1024;   // <= window_size
+        int     hop            = 256;    // n/4 = 75 % de recouvrement
+        float   window_ratio   = 1.0f;   // 1.0 = synthese symetrique ; <1 = asym.
+        int     num_bands      = 32;     // <= max_bands
+        FftMode fft_mode       = FftMode::R2C;
+        int     window_id      = 0;
+        int     dualmic_id     = 0;      // 0 = mono
+*/
 public:
-    EngineImpl(const EngineCaps& caps, const RuntimeConfig& cfg)
-        : caps_(caps), cfg_(cfg) {
+    EngineImpl(const EngineCaps& e_caps, const RuntimeConfig& cfg)
+        : caps_(e_caps), cfg_(cfg) {
 
         // Decouverte des modules disponibles (sans chargement).
         const auto dir = moduleDir();
         const int nb_module = registry_.scan_modules(dir);
-        std::string msg = _("engine: created (Windows_size=");
-        msg += std::to_string(cfg_.window_size);
-        msg += _(", modules available: ");
+        std::string msg;
+        msg = __func__ ;
+        msg += _(": created with windows_size=");
+        msg += ( cfg_.window_size ? std::to_string(cfg_.window_size) : "Unspecified windows_size");
+        msg += " , ";
         msg += std::to_string(nb_module);
+        msg += _(" modules founds.");
         msg += ")";
         LOG(msg);
 
-        // Chargement et liaison par couche : backend d'abord, modules ensuite.
+        msg = _("engine: Load Backend:");
+        LOG(msg);
         bindBackend(caps_.backend_id);
-        bindModule(cfg_.module_id);
+
+        msg = _("engine: Load Module:");
+        LOG(msg);
+        if (cfg_.modules.size() != 0 ){
+            for ( auto mod = cfg_.modules.begin(); mod != cfg_.modules.end() -1; mod++){
+                bindModule(mod->module->info_c()->id);
+            }
+        }else{
+            for (const auto& module : registry_.list_available())
+                if(module.kind != ModuleKind::ComputeBackend){
+                    bindModule(module.id);
+                }
+        }
     }
 
     ~EngineImpl() override {
@@ -79,21 +122,47 @@ public:
         releaseBackend();
     }
 
-    int latencySamples() const noexcept override {
+    int latency_samples() const noexcept override {
         return cached_latency_.declared_samples > 0
             ? cached_latency_.declared_samples : cfg_.window_size;
     }
+        
+    int latency_samples_rt() const noexcept override {
+        return cached_latency_.measured_samples > 0
+            ? cached_latency_.measured_samples : cfg_.window_size;
+    }
 
     Status reconfigure(const RuntimeConfig& cfg, ApplyResult& how) override {
-        const bool sup_changed = (cfg.module_id != cfg_.module_id);
+        /*
+        EngineCaps
+            int     sample_rate        = 48000;
+            int     window_size_max    = 4096;   // taille de fenetre max pre-allouee
+            int     max_bands          = 48;     // nb de bandes perceptives max
+            int     max_tracks         = 16;
+            int     max_block          = 2048;   // taille de bloc hote max (dim. rings)
+            size_t  backend_id      = 0;      // 0 = AUTO ; sinon id du registre
+
+        RuntimeConfig :
+            size_t                     backend_id = 0;      // 0 = AUTO ; sinon id du registre
+            std::vector<ChainElement>  modules;           // TODO: reflete l'audio_chain liste
+            int     window_size     = 1024;    // <= window_size
+            int     hop             = 256;    // n/4 = 75 % de recouvrement
+            float   window_ratio    = 1.0f;   // 1.0 = synthese symetrique ; <1 = asym.
+            int     num_bands       = 32;     // <= max_bands
+            FftMode fft_mode        = FftMode::R2C;
+            int     window_id       = 0;
+            int     dualmic_id      = 0;      // 0 = mono
+        */
+        const bool backend_changed = (cfg.backend_id != cfg_.backend_id);
         cfg_ = cfg;
-        how  = ApplyResult::Hot;
+
+        if (backend_changed)
+            how  = ApplyResult::Cold;
+
+            bindModule(cfg_.backend_id);
 
         if (backend_)
             backend_->reconfigure(caps_, cfg_);
-
-        if (sup_changed)
-            bindModule(cfg_.module_id);
 
         return Status::Ok;
     }
@@ -104,7 +173,7 @@ public:
         return {};
     }
 
-    void setAudioIO(TrackIO io) override {
+    void setAudioIO(TrackIO io) const noexcept override {
         if (!backend_) {
             std::string msg_err = error(__func__,
                 _("engine: setAudioIO called without backend"),
@@ -221,7 +290,7 @@ private:
 
         backend_ = registry_.find_backend();
         if (!backend_) {
-            std::string msg = _("engine: find_backend returned null for id=");
+            std::string msg = _("engine: could not find a loaded backend with the requested available_id=");
             msg += std::to_string(available_id);
             LOG(msg);
             return;
@@ -229,18 +298,18 @@ private:
         backend_id_ = available_id;
 
         // Enregistre les callbacks avant reconfigure().
-        backend_->on_declared_latency_changed = &EngineImpl::on_declared_latency_changed;
-        backend_->on_latency_updated   = &EngineImpl::on_latency_updated;
-        backend_->callback_user      = this;
+        backend_->on_declared_latency_changed   = &EngineImpl::on_declared_latency_changed;
+        backend_->on_latency_updated            = &EngineImpl::on_latency_updated;
+        backend_->callback_user                 = this;
 
         // Reconfigure avec les caps et cfg reelles.
         // Le backend demarre son thread de traitement ici.
         backend_->reconfigure(caps_, cfg_);
 
-        std::string msg = _("engine: bound backend id=");
+        std::string msg = _("engine: load backend with available_id=");
         msg += std::to_string(available_id);
         msg += _(" name='");
-        msg += (backend_->info_c()->name ? backend_->info_c()->name : "");
+        msg += (backend_->info_c()->name ? backend_->info_c()->name : "name not set");
         msg += "'";
         LOG(msg);
     }
@@ -336,11 +405,11 @@ private:
     ProcessingStats cached_stats_;
 };
 
-std::unique_ptr<Engine> createEngine(const EngineCaps& caps,
+std::unique_ptr<Engine> createEngine(const EngineCaps& e_caps,
                                      const RuntimeConfig& cfg,
                                      Status* status) {
     if (status) *status = Status::Ok;
-    return std::make_unique<EngineImpl>(caps, cfg);
+    return std::make_unique<EngineImpl>(e_caps, cfg);
 }
 
 std::vector<ModuleInfo> availableBackends() {

@@ -39,8 +39,6 @@ bool AudioProcessor::prepare(double sample_rate, int block_size) {
     sample_rate_ = sample_rate;
     block_size_  = block_size;
 
-    // TODO : engine_->reconfigure(EngineCaps, RuntimeConfig) a ajouter dans Engine.
-    // La surcharge actuelle n'accepte que RuntimeConfig.
     ApplyResult how;
     engine_->reconfigure(cfg_, how);
 

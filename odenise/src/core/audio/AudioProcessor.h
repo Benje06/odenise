@@ -24,7 +24,7 @@
 #pragma once
 
 #include "engine.h"
-
+#include "audio_chain.h"
 #include <memory>
 // ---------------------------------------------------------------------------
 //  Visibilite des symboles de libodenise_audio.

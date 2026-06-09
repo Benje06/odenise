@@ -17,8 +17,8 @@
 
 # Chemin vers interfaces/ du coeur (ns_engine.h public).
 # Utilise par tous les modules de ce CMakeLists.
-set(ODENISE_CORE_INTERFACES
-    ${CMAKE_SOURCE_DIR}/src/core/interfaces)
+set(ODENISE_CORE_ENGINE
+    ${CMAKE_SOURCE_DIR}/src/core/engine)
 
 # Chemin vers src/core/ pour les headers internes (chain/, registry/, tools/).
 # Utilise uniquement par les modules qui incluent des headers internes du coeur
@@ -38,8 +38,10 @@ set_target_properties(passthrough PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${ODENISE_MODULE_OUTPUT_DIR}/suppression")
 
 target_include_directories(passthrough PRIVATE
-    ${ODENISE_CORE_INTERFACES}
+    ${ODENISE_CORE_ENGINE}
     ${ODENISE_CORE_INTERNAL})
+
+target_link_libraries(passthrough PRIVATE odenise_log odenise_chain odenise_thread)
 target_compile_features(passthrough PRIVATE cxx_std_20)
 
 if(MSVC)
@@ -62,7 +64,7 @@ set_target_properties(backend_cpu PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${ODENISE_MODULE_OUTPUT_DIR}/backends")
 
 target_include_directories(backend_cpu PRIVATE
-    ${ODENISE_CORE_INTERFACES}
+    ${ODENISE_CORE_ENGINE}
     ${ODENISE_CORE_INTERNAL})
 
 target_link_libraries(backend_cpu PRIVATE odenise_log odenise_chain odenise_thread)
@@ -93,7 +95,7 @@ if(ODENISE_HAVE_CUDA)
         LIBRARY_OUTPUT_DIRECTORY "${ODENISE_MODULE_OUTPUT_DIR}/backends"
         RUNTIME_OUTPUT_DIRECTORY "${ODENISE_MODULE_OUTPUT_DIR}/backends")
 
-    target_include_directories(backend_cuda PRIVATE ${ODENISE_CORE_INTERFACES})
+    target_include_directories(backend_cuda PRIVATE ${ODENISE_CORE_ENGINE})
     target_compile_features(backend_cuda PRIVATE cxx_std_20)
 
     # CUDA : le module porte sa propre dependance cuFFT (le coeur n'en a plus).

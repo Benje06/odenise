@@ -28,7 +28,7 @@ set_target_properties(odenise_log PROPERTIES
 target_include_directories(odenise_log
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/interfaces>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/engine>
         $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>)
 
 target_compile_features(odenise_log PUBLIC cxx_std_20)

@@ -233,7 +233,7 @@ namespace {
         // backendCaps : valide meme sans backend C++ actif (retourne struct vide).
         const odenise::BackendCaps bc = processor.engine()->backendCaps();
         msg = _("  -> backend caps: name='");
-        msg += bc.name.empty() ? _("(none)") : bc.name;
+        msg += bc.backend_name.empty() ? _("(none)") : bc.backend_name;
         msg += _("' gpu=");
         msg += bc.is_gpu ? _("yes") : _("no");
         LOG(msg);
@@ -277,7 +277,7 @@ namespace {
             return 1;
         }
         msg = _("engine created via AudioProcessor, latency = ");
-        msg += std::to_string(processor.engine()->latencySamples());
+        msg += std::to_string(processor.engine()->latency_samples());
         msg += _(" samples");
         LOG(msg);
         msg = _("=== AudioProcessor test passed ===");

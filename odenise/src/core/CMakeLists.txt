@@ -4,7 +4,7 @@
 #  ZERO dependance CUDA : tout le calcul GPU est dans des modules dynamiques.
 #
 #  Layout des sources :
-#    interfaces/ns_engine.h        -> API publique (ModuleBase, BackendBase, ...)
+#    engine/engine.h               -> API publique (ModuleBase, BackendBase, ...)
 #    chain/audio_chain.h/.cpp      -> chaine cablee (interne, non installe)
 #    registry/module_registry.h    -> registre des modules (interne)
 #    registry/loader.cpp           -> chargement dlopen/LoadLibrary
@@ -14,7 +14,7 @@
 # ============================================================================
 
 set(ODENISE_CORE_SOURCES
-    engine.cpp
+    engine/engine.cpp
     registry/module_registry.cpp
     audio/AudioEditor.cpp
     audio/AudioProcessor.cpp
@@ -30,14 +30,14 @@ set_target_properties(odenise_core PROPERTIES
 
 # ---------------------------------------------------------------------------
 #  Includes
-#  PUBLIC  : interfaces/ expose ns_engine.h aux consommateurs (modules, tests,
+#  PUBLIC  : ENGINE/ expose engine.h aux consommateurs (modules, tests,
 #            plugin). Le chemin BUILD_INTERFACE permet d'inclure sans install ;
 #            INSTALL_INTERFACE est le chemin apres cmake --install.
 #  PRIVATE : chain/, registry/, tools/ sont internes au coeur uniquement.
 # ---------------------------------------------------------------------------
 target_include_directories(odenise_core
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/interfaces>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/engine>
         $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -49,10 +49,11 @@ target_include_directories(odenise_core
 target_compile_features(odenise_core PUBLIC cxx_std_20)
 target_compile_definitions(odenise_core PRIVATE
     ODENISE_BUILD_LIBRARY=1
-    LOGGER_EXPORTS=1
-    DEBUG_TOOL=1
     ODENISE_VERSION_DIR="${ODENISE_VERSION_DIR}"
-    AUDIO_EXPORTS
+    LOGGER_EXPORTS=1
+    CHAIN_EXPORTS=1
+    AUDIO_EXPORTS=1
+    DEBUG_TOOL=1
 )
 
 # libdl sous Linux
@@ -86,5 +87,5 @@ install(TARGETS odenise_core
 
 # ns_engine.h est le seul header public installe.
 # Les headers internes (chain/, registry/, tools/) ne sont pas installes.
-install(FILES interfaces/engine.h
+install(FILES engine/engine.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${ODENISE_VERSION_DIR})

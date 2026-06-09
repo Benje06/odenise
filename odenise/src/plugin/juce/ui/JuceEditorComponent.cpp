@@ -11,74 +11,146 @@ namespace odenise::plugin {
 //  VuMeter
 // ============================================================================
 
-VuMeter::VuMeter()
+VuMeter::VuMeter(int num_channels)
+    : num_channels_(juce::jlimit(1, kMaxChannels, num_channels))
+{}
+
+void VuMeter::setNumChannels(int n) noexcept
 {
-    for (int ch = 0; ch < kChannels; ++ch) {
-        peak_[ch]      = 0.0f;
-        rms_ [ch]      = 0.0f;
-        peak_hold_[ch] = 0.0f;
-    }
+    num_channels_ = juce::jlimit(1, kMaxChannels, n);
 }
 
-void VuMeter::setPeak(int channel, float value) noexcept
+void VuMeter::setPeak(int ch, float value) noexcept
 {
-    if (channel < 0 || channel >= kChannels) return;
-    peak_[channel] = juce::jlimit(0.0f, 1.0f, value);
-    if (peak_[channel] > peak_hold_[channel])
-        peak_hold_[channel] = peak_[channel];
+    if (ch < 0 || ch >= num_channels_) return;
+    peak_[ch] = juce::jlimit(0.0f, 1.0f, value);
+    if (peak_[ch] > peak_hold_[ch])
+        peak_hold_[ch] = peak_[ch];
 }
 
-void VuMeter::setRms(int channel, float value) noexcept
+void VuMeter::setRms(int ch, float value) noexcept
 {
-    if (channel < 0 || channel >= kChannels) return;
-    rms_[channel] = juce::jlimit(0.0f, 1.0f, value);
+    if (ch < 0 || ch >= num_channels_) return;
+    rms_[ch] = juce::jlimit(0.0f, 1.0f, value);
 }
 
 void VuMeter::paint(juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds();
+    const auto b     = getLocalBounds();
+    const int  pad   = 3;
+    const int  bar_h = b.getHeight() - pad * 2;
+    const int  bar_y = pad;
+    const int  total_w = b.getWidth() - pad * (num_channels_ + 1);
+    const int  bar_w = (num_channels_ > 0)
+                       ? total_w / num_channels_
+                       : total_w;
+
     g.fillAll(juce::Colour(0xff1a1a1a));
 
-    const int bar_w    = (bounds.getWidth() - (kChannels + 1) * 4) / kChannels;
-    const int bar_h    = bounds.getHeight() - 8;
-    const int bar_y    = 4;
-
-    for (int ch = 0; ch < kChannels; ++ch)
+    for (int ch = 0; ch < num_channels_; ++ch)
     {
-        const int bar_x = 4 + ch * (bar_w + 4);
+        const int bx = pad + ch * (bar_w + pad);
 
-        // Fond de barre
+        // Fond
         g.setColour(juce::Colour(0xff2d2d2d));
-        g.fillRect(bar_x, bar_y, bar_w, bar_h);
+        g.fillRect(bx, bar_y, bar_w, bar_h);
 
-        // RMS -- vert -> jaune -> rouge selon niveau
-        const int rms_h = static_cast<int>(rms_[ch] * bar_h);
-        const int rms_y = bar_y + bar_h - rms_h;
+        // RMS colore
+        const int rh = static_cast<int>(rms_[ch] * bar_h);
+        g.setColour(rms_[ch] < 0.7f ? juce::Colour(0xff44bb44)
+                  : rms_[ch] < 0.9f ? juce::Colour(0xffddbb00)
+                                     : juce::Colour(0xffdd2222));
+        g.fillRect(bx, bar_y + bar_h - rh, bar_w, rh);
 
-        if (rms_[ch] < 0.7f)
-            g.setColour(juce::Colour(0xff44bb44));
-        else if (rms_[ch] < 0.9f)
-            g.setColour(juce::Colour(0xffddbb00));
-        else
-            g.setColour(juce::Colour(0xffdd2222));
-
-        g.fillRect(bar_x, rms_y, bar_w, rms_h);
-
-        // Peak hold -- ligne blanche
-        const int ph_y = bar_y + bar_h - static_cast<int>(peak_hold_[ch] * bar_h);
+        // Peak hold
+        const int ph = bar_y + bar_h - static_cast<int>(peak_hold_[ch] * bar_h);
         g.setColour(juce::Colours::white);
-        g.fillRect(bar_x, ph_y, bar_w, 2);
+        g.fillRect(bx, ph, bar_w, 2);
 
-        // Decroissance peak hold
         peak_hold_[ch] = std::max(0.0f, peak_hold_[ch] - kDecay);
-
-        // Label canal
-        g.setColour(juce::Colours::lightgrey);
-        g.setFont(10.0f);
-        g.drawText(ch == 0 ? "In" : "Out",
-                   bar_x, bar_y + bar_h + 2, bar_w, 12,
-                   juce::Justification::centred, false);
     }
+}
+
+// ============================================================================
+//  Helpers locaux
+// ============================================================================
+
+// Construit la chaine de caracteristiques d'une AudioInterfaceInfo.
+// Format :
+//   Actuel  : sr=48000 Hz  buf=512 smp  lat=10.7 ms  bits=24
+//   Canaux  : 2
+//   Rates   : 44100  [48000]  96000  192000 Hz
+//   Buffers : 64  128  256  [512]  1024  2048 smp
+static std::string buildInfoString(const odenise::audio::AudioInterfaceInfo& iface,
+                                   bool show_inputs)
+{
+    std::string s;
+
+    // -- Bloc "Actuel" -------------------------------------------------------
+    const int   sr     = iface.current_sample_rate;
+    const int   buf    = iface.current_buffer_size;
+    const float lat_ms = (sr > 0 && buf > 0)
+                         ? (static_cast<float>(buf) / sr) * 1000.0f
+                         : 0.0f;
+    if (sr > 0) {
+        char tmp[16];
+        const float sr_khz = sr / 1000.0f;
+        std::snprintf(tmp, sizeof(tmp),
+            floorf(sr_khz) == sr_khz ? "%.0fKHz " : "%.1fKHz ",
+            sr_khz);
+        s += tmp;
+    } else {
+        s += "Sample rate: N/A ";
+    }
+    s += (iface.current_bit_depth > 0) ? std::to_string(iface.current_bit_depth) : "N/A";
+    s += "bits ";
+    //s += "Buffer Size: ";
+    if (buf > 0) { 
+        s += std::to_string(buf);
+        s += " samples "; 
+    }else{
+        s += " N/A ";
+    }           
+    if (lat_ms > 0.0f) {
+        // lat_ms avec 1 decimale
+        char lat_buf[16];
+        std::snprintf(lat_buf, sizeof(lat_buf), "%.1f", static_cast<double>(lat_ms));
+        //s += "\nLatence: ";
+        s += lat_buf;
+        s += " ms  ";
+    }
+ 
+    // -- Canaux --------------------------------------------------------------
+    const int ch = show_inputs ? iface.max_input_channels : iface.max_output_channels;
+    s += std::to_string(ch);
+    if (ch > 1){
+        s += " Canaux";
+    }else{
+        s += " Canal";
+    }
+
+
+    // -- Sample rates disponibles (actuel entre [ ]) -------------------------
+    if (!iface.supported_sample_rates.empty()) {
+        s += "\nRates: ";
+        for (int r : iface.supported_sample_rates) {
+            s += (r == sr) ? " [" + std::to_string(r) + "]"
+                           : "  " + std::to_string(r);
+        }
+        s += " Hz";
+    }
+
+    // -- Buffer sizes disponibles (actuel entre [ ]) -------------------------
+    if (!iface.supported_buffer_sizes.empty()) {
+        s += "\nBuffers: ";
+        for (int b : iface.supported_buffer_sizes) {
+            s += (b == buf) ? " [" + std::to_string(b) + "]"
+                            : "  " + std::to_string(b);
+        }
+        s += " smp";
+    }
+
+    return s;
 }
 
 // ============================================================================
@@ -88,49 +160,55 @@ void VuMeter::paint(juce::Graphics& g)
 JuceEditorComponent::JuceEditorComponent(JucePlugin& plugin)
     : juce::AudioProcessorEditor(plugin)
     , plugin_(plugin)
+    , vu_in_ (1)
+    , vu_out_(1)
 {
     setSize(kWidth, kHeight);
-    // Taille figee : Cubase exige des contraintes explicites et coherentes.
     setResizeLimits(kWidth, kHeight, kWidth, kHeight);
 
-    // -- Interface --
-    label_interfaces_.setText("Interface audio", juce::dontSendNotification);
-    addAndMakeVisible(label_interfaces_);
+    //vu_in_.setTopLeftPosition()
+    addAndMakeVisible(vu_in_);
+    // -- Section entree --
+    label_in_iface_.setText("Entree", juce::dontSendNotification);
+    addAndMakeVisible(label_in_iface_);
 
-    combo_interfaces_.setTextWhenNothingSelected("-- choisir une interface --");
-    combo_interfaces_.addListener(this);
-    addAndMakeVisible(combo_interfaces_);
+    combo_in_iface_.setTextWhenNothingSelected("-- interface entree --");
+    combo_in_iface_.addListener(this);
+    addAndMakeVisible(combo_in_iface_);
 
-    // -- Info --
-    label_info_.setJustificationType(juce::Justification::topLeft);
-    label_info_.setText("", juce::dontSendNotification);
-    label_info_.setMinimumHorizontalScale(1.0f);
-    addAndMakeVisible(label_info_);
+    label_in_ch_.setText("Canal", juce::dontSendNotification);
+    addAndMakeVisible(label_in_ch_);
 
-    // -- Entrees --
-    label_inputs_.setText("Canal entree", juce::dontSendNotification);
-    addAndMakeVisible(label_inputs_);
+    combo_in_ch_.setTextWhenNothingSelected("-- canal --");
+    combo_in_ch_.addListener(this);
+    addAndMakeVisible(combo_in_ch_);
 
-    combo_inputs_.setTextWhenNothingSelected("-- entree --");
-    combo_inputs_.addListener(this);
-    addAndMakeVisible(combo_inputs_);
+    //label_in_info_.setJustificationType(juce::Justification::topLeft);
+    label_in_info_.setMinimumHorizontalScale(1.0f);
+    addAndMakeVisible(label_in_info_);
+ /*
+    // -- Section sortie --
+    label_out_iface_.setText("Interface sortie", juce::dontSendNotification);
+    addAndMakeVisible(label_out_iface_);
 
-    // -- Sorties --
-    label_outputs_.setText("Canal sortie", juce::dontSendNotification);
-    addAndMakeVisible(label_outputs_);
+    combo_out_iface_.setTextWhenNothingSelected("-- Sortie --");
+    combo_out_iface_.addListener(this);
+    addAndMakeVisible(combo_out_iface_);
 
-    combo_outputs_.setTextWhenNothingSelected("-- sortie --");
-    combo_outputs_.addListener(this);
-    addAndMakeVisible(combo_outputs_);
+    label_out_info_.setJustificationType(juce::Justification::topLeft);
+    label_out_info_.setMinimumHorizontalScale(1.0f);
+    addAndMakeVisible(label_out_info_);
 
-    // -- Vu-metre --
-    label_vu_.setText("Niveau", juce::dontSendNotification);
-    label_vu_.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(label_vu_);
-    addAndMakeVisible(vu_meter_);
+    label_out_ch_.setText("Canal", juce::dontSendNotification);
+    addAndMakeVisible(label_out_ch_);
 
-    populateInterfaceCombo();
+    combo_out_ch_.setTextWhenNothingSelected("-- canal --");
+    combo_out_ch_.addListener(this);
+    addAndMakeVisible(combo_out_ch_);
 
+    addAndMakeVisible(vu_out_);
+*/
+    populateCombos();
     startTimerHz(10);
 }
 
@@ -138,9 +216,10 @@ JuceEditorComponent::JuceEditorComponent(JucePlugin& plugin)
 JuceEditorComponent::~JuceEditorComponent()
 {
     stopTimer();
-    combo_interfaces_.removeListener(this);
-    combo_inputs_.removeListener(this);
-    combo_outputs_.removeListener(this);
+    combo_in_iface_.removeListener(this);
+    combo_in_ch_   .removeListener(this);
+    combo_out_iface_.removeListener(this);
+    combo_out_ch_  .removeListener(this);
 }
 
 // ----------------------------------------------------------------------------
@@ -148,45 +227,71 @@ void JuceEditorComponent::paint(juce::Graphics& g)
 {
     g.fillAll(getLookAndFeel().findColour(
         juce::ResizableWindow::backgroundColourId));
+
+    // Separateur visuel entre les deux sections
+    g.setColour(juce::Colours::grey.withAlpha(0.4f));
+    const int sep_y = kGap + kRowH + kGap + kInfoH + kGap + kRowH + kGap / 2;
+    g.drawHorizontalLine(sep_y,
+        static_cast<float>(kGap),
+        static_cast<float>(kWidth - kGap));
 }
 
 // ----------------------------------------------------------------------------
 void JuceEditorComponent::resized()
 {
-    auto area = getLocalBounds().reduced(12);
-    const int row_h   = 28;
-    const int label_w = 120;
-    const int gap     = 8;
-    const int vu_w    = 80;
+    // Layout :
+    //   [label_w] [combo / info               ] [vu_w]
+    //
+    // Section entree (haut), separateur, section sortie (bas).
 
-    // Colonne gauche (controles) / droite (vu-metre)
-    auto vu_col  = area.removeFromRight(vu_w);
-    area.removeFromRight(gap);
+    const int content_w = kWidth  - kGap * 2;
+    const int ctrl_w    = content_w - kVuW - kGap;
 
-    // Ligne 1 : interface
-    auto row1 = area.removeFromTop(row_h);
-    label_interfaces_.setBounds(row1.removeFromLeft(label_w));
-    combo_interfaces_.setBounds(row1);
-    area.removeFromTop(gap);
+    int y = kGap;
 
-    // Zone info
-    label_info_.setBounds(area.removeFromTop(90));
-    area.removeFromTop(gap);
+    // ---- Section entree ------------------------------------------------
+    // Ligne interface entree
+    label_in_iface_.setBounds(kGap,              y, kLabelW,           kRowH);
+    combo_in_iface_.setBounds(kGap + kLabelW,    y, ctrl_w - kLabelW,  kRowH);
+    // Vu-metre entree : couvre les lignes interface + info + canal
+    const int vu_in_y = y;
 
-    // Ligne 2 : canal entree
-    auto row2 = area.removeFromTop(row_h);
-    label_inputs_.setBounds(row2.removeFromLeft(label_w));
-    combo_inputs_.setBounds(row2);
-    area.removeFromTop(gap);
+    y += kRowH + kGap;
 
-    // Ligne 3 : canal sortie
-    auto row3 = area.removeFromTop(row_h);
-    label_outputs_.setBounds(row3.removeFromLeft(label_w));
-    combo_outputs_.setBounds(row3);
+    // Info entree
+    label_in_info_.setBounds(kGap + kLabelW, y, ctrl_w - kLabelW, kInfoH);
+    y += kInfoH + kGap;
 
-    // Vu-metre (colonne droite)
-    label_vu_.setBounds(vu_col.removeFromTop(20));
-    vu_meter_.setBounds(vu_col);
+    // Ligne canal entree
+    label_in_ch_.setBounds(kGap,           y, kLabelW,          kRowH);
+    combo_in_ch_.setBounds(kGap + kLabelW, y, ctrl_w - kLabelW, kRowH);
+    y += kRowH;
+
+    const int vu_in_h = y - vu_in_y;
+    vu_in_.setBounds(kGap + ctrl_w + kGap, vu_in_y, kVuW, vu_in_h);
+
+    // ---- Separateur ----------------------------------------------------
+    y += kSepH;
+
+    // ---- Section sortie ------------------------------------------------
+    const int vu_out_y = y;
+
+    // Ligne interface sortie
+    label_out_iface_.setBounds(kGap,             y, kLabelW,          kRowH);
+    combo_out_iface_.setBounds(kGap + kLabelW,   y, ctrl_w - kLabelW, kRowH);
+    y += kRowH + kGap;
+
+    // Info sortie
+    label_out_info_.setBounds(kGap + kLabelW, y, ctrl_w - kLabelW, kInfoH);
+    y += kInfoH + kGap;
+
+    // Ligne canal sortie
+    label_out_ch_.setBounds(kGap,           y, kLabelW,          kRowH);
+    combo_out_ch_.setBounds(kGap + kLabelW, y, ctrl_w - kLabelW, kRowH);
+    y += kRowH;
+
+    const int vu_out_h = y - vu_out_y;
+    vu_out_.setBounds(kGap + ctrl_w + kGap, vu_out_y, kVuW, vu_out_h);
 }
 
 // ----------------------------------------------------------------------------
@@ -197,132 +302,115 @@ void JuceEditorComponent::timerCallback()
 
     editor->poll();
 
-    // Stub vu-metre : simule decroissance tant que le backend RT
-    // ne publie pas encore de niveaux reels.
-    // Phase 3b+ : remplacer par lecture depuis engine->spectrum() ou
-    // un double-buffer atomique alimente par processBlock().
-    vu_meter_.setPeak(0, 0.0f);
-    vu_meter_.setRms (0, 0.0f);
-    vu_meter_.setPeak(1, 0.0f);
-    vu_meter_.setRms (1, 0.0f);
-    vu_meter_.repaint();
+    // Stub : niveaux a zero tant que processBlock ne publie pas de mesures.
+    // Phase 3b+ : lire depuis un double-buffer atomique alimente par processBlock.
+    vu_in_ .setPeak(0, 0.0f); vu_in_ .setRms(0, 0.0f);
+    vu_out_.setPeak(0, 0.0f); vu_out_.setRms(0, 0.0f);
+    vu_in_ .repaint();
+    vu_out_.repaint();
 }
 
 // ----------------------------------------------------------------------------
-void JuceEditorComponent::comboBoxChanged(juce::ComboBox* combo)
+void JuceEditorComponent::comboBoxChanged(juce::ComboBox* cb)
 {
     auto* editor = plugin_.layer()->editor();
     if (!editor) return;
 
-    if (combo == &combo_interfaces_)
+    if (cb == &combo_in_iface_)
     {
-        const int juce_id = combo_interfaces_.getSelectedId();
-        if (juce_id <= 0) return;
-
-        const auto& ifaces = editor->audioInterfaces();
-        const int   idx    = juce_id - 1;
-        if (idx < 0 || idx >= static_cast<int>(ifaces.size())) return;
-
-        const int iface_id = ifaces[static_cast<size_t>(idx)].id;
-        editor->selectAudioInterface(iface_id);
-        updateInterfaceInfo(iface_id);
+        const int idx = cb->getSelectedId() - 1;
+        if (idx < 0) return;
+        const auto& list = editor->audioInputs();
+        if (idx >= static_cast<int>(list.size())) return;
+        const int id = list[static_cast<size_t>(idx)].id;
+        editor->selectInputInterface(id);
+        updateInputInfo(id);
     }
-    else if (combo == &combo_inputs_)
+    else if (cb == &combo_in_ch_)
     {
-        const int ch = combo_inputs_.getSelectedId() - 1;
-        std::string msg = _("JuceEditorComponent: selected input channel ");
-        msg += std::to_string(ch);
-        LOG(msg);
+        editor->selectInputChannel(cb->getSelectedId() - 1);
     }
-    else if (combo == &combo_outputs_)
+    else if (cb == &combo_out_iface_)
     {
-        const int ch = combo_outputs_.getSelectedId() - 1;
-        std::string msg = _("JuceEditorComponent: selected output channel ");
-        msg += std::to_string(ch);
-        LOG(msg);
+        const int idx = cb->getSelectedId() - 1;
+        if (idx < 0) return;
+        const auto& list = editor->audioOutputs();
+        if (idx >= static_cast<int>(list.size())) return;
+        const int id = list[static_cast<size_t>(idx)].id;
+        editor->selectOutputInterface(id);
+        updateOutputInfo(id);
+    }
+    else if (cb == &combo_out_ch_)
+    {
+        editor->selectOutputChannel(cb->getSelectedId() - 1);
     }
 }
 
 // ----------------------------------------------------------------------------
-void JuceEditorComponent::populateInterfaceCombo()
+void JuceEditorComponent::populateCombos()
 {
-    combo_interfaces_.clear(juce::dontSendNotification);
-
     auto* editor = plugin_.layer()->editor();
     if (!editor) return;
 
-    const auto& ifaces = editor->audioInterfaces();
-    int juce_id = 1;
-    for (const auto& iface : ifaces)
-        combo_interfaces_.addItem(iface.name, juce_id++);
+    combo_in_iface_.clear(juce::dontSendNotification);
+    int jid = 1;
+    for (const auto& iface : editor->audioInputs())
+        combo_in_iface_.addItem(iface.name, jid++);
+
+    combo_out_iface_.clear(juce::dontSendNotification);
+    jid = 1;
+    for (const auto& iface : editor->audioOutputs())
+        combo_out_iface_.addItem(iface.name, jid++);
 }
 
 // ----------------------------------------------------------------------------
-void JuceEditorComponent::updateInterfaceInfo(int interface_id)
+void JuceEditorComponent::updateInputInfo(int interface_id)
 {
     auto* editor = plugin_.layer()->editor();
     if (!editor) return;
 
-    const auto& ifaces = editor->audioInterfaces();
+    for (const auto& iface : editor->audioInputs()) {
+        if (iface.id != interface_id) continue;
 
-    const odenise::audio::AudioInterfaceInfo* found = nullptr;
-    for (const auto& iface : ifaces) {
-        if (iface.id == interface_id) { found = &iface; break; }
-    }
+        label_in_info_.setText(buildInfoString(iface, true),
+                               juce::dontSendNotification);
 
-    if (!found) {
-        label_info_.setText("", juce::dontSendNotification);
-        combo_inputs_.clear(juce::dontSendNotification);
-        combo_outputs_.clear(juce::dontSendNotification);
+        combo_in_ch_.clear(juce::dontSendNotification);
+        for (int ch = 0; ch < iface.max_input_channels; ++ch)
+            combo_in_ch_.addItem("In " + std::to_string(ch + 1), ch + 1);
+
+        vu_in_.setNumChannels(juce::jlimit(1, VuMeter::kMaxChannels,
+                                           iface.max_input_channels));
         return;
     }
 
-    // -- Caracteristiques --
-    std::string info;
+    label_in_info_.setText("", juce::dontSendNotification);
+    combo_in_ch_.clear(juce::dontSendNotification);
+}
 
-    info += "Entrees : ";
-    info += std::to_string(found->max_input_channels);
-    info += "   Sorties : ";
-    info += std::to_string(found->max_output_channels);
-    info += "\n";
+// ----------------------------------------------------------------------------
+void JuceEditorComponent::updateOutputInfo(int interface_id)
+{
+    auto* editor = plugin_.layer()->editor();
+    if (!editor) return;
 
-    info += "Sample rates :";
-    for (int sr : found->supported_sample_rates) {
-        info += " ";
-        info += std::to_string(sr);
-    }
-    info += " Hz\n";
+    for (const auto& iface : editor->audioOutputs()) {
+        if (iface.id != interface_id) continue;
 
-    if (!found->supported_buffer_sizes.empty()) {
-        info += "Buffer sizes :";
-        for (int bs : found->supported_buffer_sizes) {
-            info += " ";
-            info += std::to_string(bs);
-        }
-        info += "\n";
-    }
+        label_out_info_.setText(buildInfoString(iface, false),
+                                juce::dontSendNotification);
 
-    info += (found->current_bit_depth > 0)
-        ? "Bits : " + std::to_string(found->current_bit_depth)
-        : "Bits : N/A";
+        combo_out_ch_.clear(juce::dontSendNotification);
+        for (int ch = 0; ch < iface.max_output_channels; ++ch)
+            combo_out_ch_.addItem("Out " + std::to_string(ch + 1), ch + 1);
 
-    label_info_.setText(info, juce::dontSendNotification);
-
-    // -- Canaux entree --
-    combo_inputs_.clear(juce::dontSendNotification);
-    for (int ch = 0; ch < found->max_input_channels; ++ch) {
-        std::string name = "In ";
-        name += std::to_string(ch + 1);
-        combo_inputs_.addItem(name, ch + 1);
+        vu_out_.setNumChannels(juce::jlimit(1, VuMeter::kMaxChannels,
+                                            iface.max_output_channels));
+        return;
     }
 
-    // -- Canaux sortie --
-    combo_outputs_.clear(juce::dontSendNotification);
-    for (int ch = 0; ch < found->max_output_channels; ++ch) {
-        std::string name = "Out ";
-        name += std::to_string(ch + 1);
-        combo_outputs_.addItem(name, ch + 1);
-    }
+    label_out_info_.setText("", juce::dontSendNotification);
+    combo_out_ch_.clear(juce::dontSendNotification);
 }
 
 } // namespace odenise::plugin

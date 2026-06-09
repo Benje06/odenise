@@ -170,7 +170,12 @@ int Thread::S_Thread() {
     try {
         stop_.store(false, std::memory_order_release);
         thread_ = std::thread([this] {
-            while (Run()) {}
+            std::unique_lock<std::mutex> lock(mtx_);
+            while (Run()) {
+                cv_.wait(lock, [this] {
+                    return !pause_.load(std::memory_order_acquire);
+                });
+            }
         });
         LOG("Thread: start");
     } catch (const std::exception& e) {
@@ -187,7 +192,12 @@ int Thread::S_Thread2() {
     try {
         stop2_.store(false, std::memory_order_release);
         thread2_ = std::thread([this] {
-            while (Run2()) {}
+            std::unique_lock<std::mutex> lock(mtx2_);
+            while (Run2()) {
+                cv2_.wait(lock, [this] {
+                    return !pause2_.load(std::memory_order_acquire);
+                });
+            }
         });
         LOG("Thread2: start");
     } catch (const std::exception& e) {
@@ -245,31 +255,33 @@ int Thread::T_Thread2() {
  *       paused_.store(false, std::memory_order_release);
  *   }
  */
-int Thread::P_Thread() {
-    pause_.store(true, std::memory_order_release);
-    while (!paused_.load(std::memory_order_acquire)) {
 
-    }
+// Le thread s'endort jusqu'à R_Thread()
+int Thread::P_Thread() {
+    LOG("Thread paused");
+    pause_.store(true, std::memory_order_release);
     return 0;
 }
 
-/* R_Thread -- reprend Run() après une pause. */
+// L'owner réveille le thread
 int Thread::R_Thread() {
+    LOG("Thread restart");
     pause_.store(false, std::memory_order_release);
+    cv_.notify_one();
     return 0;
 }
 
 /* P_Thread2 / R_Thread2 -- même logique pour Run2(). */
 int Thread::P_Thread2() {
+    LOG("Thread_2 pause");
     pause2_.store(true, std::memory_order_release);
-    while (!paused2_.load(std::memory_order_acquire)) {
-        
-    }
     return 0;
 }
 
 int Thread::R_Thread2() {
+    LOG("Thread_2 restart");
     pause2_.store(false, std::memory_order_release);
+    cv2_.notify_one();
     return 0;
 }
 

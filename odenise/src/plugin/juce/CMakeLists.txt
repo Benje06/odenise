@@ -66,6 +66,7 @@ target_sources(odenise_plugin
 # ---------------------------------------------------------------------------
 target_compile_definitions(odenise_plugin
     PUBLIC
+        JUCE_WINDOWS
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
@@ -92,7 +93,7 @@ target_link_libraries(odenise_plugin
 #  Les deux sous-dossiers (src/ et ui/) sont mutuellement visibles pour que
 #  JuceEditorComponent.cpp puisse inclure JucePlugin.h et JuceAudioLayer.h,
 #  et que JucePlugin.cpp puisse inclure JuceEditorComponent.h.
-#  Les headers internes odenise (tools/, interfaces/, audio/) sont aussi
+#  Les headers internes odenise (tools/, engine/, audio/) sont aussi
 #  exposes en PRIVATE.
 # ---------------------------------------------------------------------------
 target_include_directories(odenise_plugin
@@ -100,9 +101,10 @@ target_include_directories(odenise_plugin
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/ui
         ${CMAKE_SOURCE_DIR}/src/core
-        ${CMAKE_SOURCE_DIR}/src/core/audio
-        ${CMAKE_SOURCE_DIR}/src/core/interfaces
         ${CMAKE_SOURCE_DIR}/src/core/tools
+        ${CMAKE_SOURCE_DIR}/src/core/engine
+        ${CMAKE_SOURCE_DIR}/src/core/audio
+        ${CMAKE_SOURCE_DIR}/src/core/chain
 )
 
 # ---------------------------------------------------------------------------

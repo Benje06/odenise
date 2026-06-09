@@ -72,7 +72,8 @@ public:
     // -----------------------------------------------------------------------
     //  ModuleBase -- interface de traitement.
     // -----------------------------------------------------------------------
-    int latency_samples() const noexcept override { return 0; }
+    int latency_samples() const noexcept override { return -1; }
+    int latency_samples_rt() const noexcept override { return -1; }
 
     // [CTRL] Installation : recupere le buffer de sortie depuis le scratch.
     // ctx peut etre nullptr (cas du self-test interne).
@@ -93,7 +94,10 @@ public:
 
     // [CTRL] Reconfiguration structurelle. Le passthrough n'a rien a
     // reconfigurer : pas de buffers propres, pas de parametres DSP.
-    void reconfigure(const odenise::RuntimeConfig& /*cfg*/) override {}
+    odenise::Status reconfigure(const odenise::BackendCaps& b_caps, const odenise::RuntimeConfig& cfg,
+                                      odenise::ApplyResult& how) override {
+        return odenise::Status::Ok;
+    }
 
     // [RT] Buffer de sortie du module.
     void* output_buf() noexcept override { return output_buf_; }
@@ -104,13 +108,18 @@ public:
     }
 
     // [RT] Passthrough : copie entree vers sortie.
-    void process(int num_frames) noexcept override {
+    void process(size_t num_frames) noexcept override {
         if (input_ && output_buf_ && num_frames > 0)
             std::memcpy(output_buf_, input_,
-                        static_cast<std::size_t>(num_frames) * sizeof(float));
+                        num_frames * sizeof(float));
     }
 
+    void setAudioIO(odenise::TrackIO io) override {};
+
 private:
+
+    bool Run() override {return true;};
+    bool Run2() override {return true;};
     // Taille maximale de bloc acceptee (pre-allouee par le backend a n_max).
     // Valeur par defaut coherente avec EngineCaps::n_max.
     static constexpr int kMaxFrames = 4096;
@@ -127,7 +136,6 @@ private:
 // ============================================================================
 //  Point d'entree du module.
 // ============================================================================
-extern "C" ODENISE_EXPORT odenise::ModuleBase* odenise_module_entry(int /*sample_rate*/,
-                                                                int /*n_max*/) {
+extern "C" ODENISE_EXPORT odenise::ModuleBase* odenise_module_entry(odenise::EngineCaps /*e_caps*/) {
     return new (std::nothrow) PassthroughModule;
 }

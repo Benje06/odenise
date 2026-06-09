@@ -37,7 +37,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #    lib/                              -> libodenise.so, libodenise_log.so,
 #                                         libodenise_chain.so
 #                                         (.dll va dans bin/ sous Windows)
-#    include/odenise/<version>/        -> ns_engine.h (depuis src/core/interfaces/)
+#    include/odenise/<version>/        -> engine.h (depuis src/core/engine/)
 #    share/odenise/<version>/modules/  -> passthrough.so/.dll, ...
 #    share/odenise/<version>/data/     -> cfg/, ui/ (futur)
 #    share/locale/                     -> .mo gettext (futur)

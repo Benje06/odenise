@@ -45,7 +45,7 @@
     #endif
 #endif
 
-namespace odenise::chain {
+namespace odenise {
 
 // ---------------------------------------------------------------------------
 //  ChainElement -- un element atomique de la liste plate RT.

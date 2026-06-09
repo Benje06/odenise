@@ -136,6 +136,11 @@ class Thread {
 private:
     std::thread          thread_;
     std::thread          thread2_;
+    std::mutex mtx_;
+    std::condition_variable cv_;
+    std::mutex mtx2_;
+    std::condition_variable cv2_;
+
     std::atomic<bool>    stop_ {false};
     std::atomic<bool>    stop2_{false};
     /* Commandes de pause -- posées par P_Thread()/P_Thread2() hors RT,

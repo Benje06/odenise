@@ -23,8 +23,7 @@
 #include <string>
 #include <vector>
 
-// ---------------------------------------------------------------------------
-//  Visibilite des symboles
+// Visibilite des symboles
 //   ODENISE_API    : API publique de la lib partagee libodenise. Exportee a la
 //                    compilation de la lib, importee chez le consommateur.
 //   ODENISE_EXPORT : symbole d'entree d'un MODULE dynamique (toujours exporte ;
@@ -43,7 +42,6 @@
   #define ODENISE_EXPORT __attribute__((visibility("default")))
 #endif
 
-// ===========================================================================
 //  STRUCTS POD FRONTIERE INTER-COMPILATEURS
 //
 //  Ces structs traversent la frontiere entre compilateurs differents
@@ -68,14 +66,18 @@ struct OdeniseModuleInfoC {
 };
 
 struct OdeniseBackendCapsC {
-    const char*   name;
+    size_t        backend_id;
+    size_t        backend_type;
+    bool          prealloc_c2c;
+    bool          share_fft_work;
     int           is_gpu;
-    unsigned long vram_bytes;
     int           cc_major;
     int           cc_minor;
+    unsigned long vram_bytes;
     int           has_fp16;
     int           has_tensor;
-    size_t        backend_type;
+    const char*   gpu_family;
+    const char*   backend_name;
 };
 
 struct OdeniseTestResultC {
@@ -84,6 +86,8 @@ struct OdeniseTestResultC {
 };
 
 namespace odenise {
+
+struct ChainElement;
 
 inline constexpr size_t kAbiVersion = 1;
 
@@ -172,43 +176,62 @@ enum class ParamId {
 //  dans le chemin temps reel. En sortir force le chemin froid.
 // ---------------------------------------------------------------------------
 struct EngineCaps {
-    int  sample_rate        = 48000;
-    int  window_size_max    = 4096;   // taille de fenetre max pre-allouee
-    int  max_bands          = 48;     // nb de bandes perceptives max
-    int  max_tracks         = 16;
-    int  max_block          = 2048;   // taille de bloc hote max (dim. rings)
-    bool prealloc_c2c       = false;  // autorise bascule R2C<->C2C a chaud
-    bool share_fft_work     = true;   // workspace cuFFT unique partage
-    size_t  backend_id      = 0;      // 0 = AUTO ; sinon id du registre
+    // Audio spec
+    int     sample_rate         = 48000;  // sample rate frequency
+    int     buffer_size         = 256;    // buffer size en nb samples
+    // audio
+    int     window_size_max     = 4096;   // taille de fenetre max
+    int     bands_max           = 48;     // nb de bandes perceptives max
+    int     tracks_max          = 16;
+    // Memory
+    size_t  ring_size_max       = 4096;   // taille de fenetre max pre-allouee
+    int     block_max           = 2048;   // taille de bloc hote max (dim. rings)
+    size_t  backend_id          = 0;      // 0 =  AUTO ; sinon un des id du registre
 };
 
 // ---------------------------------------------------------------------------
-//  Configuration d'execution (modifiable, a chaud dans l'enveloppe)
+//  Configuration d'execution par defaut (modifiable, a chaud dans l'enveloppe)
 // ---------------------------------------------------------------------------
 struct RuntimeConfig {
-    int     window_size   = 1024;   // <= window_size
-    int     hop            = 256;    // n/4 = 75 % de recouvrement
-    float   window_ratio   = 1.0f;   // 1.0 = synthese symetrique ; <1 = asym.
-    int     num_bands      = 32;     // <= max_bands
-    FftMode fft_mode       = FftMode::R2C;
-    size_t  module_id      = 1;      // TODO: use audio_chain list
-    int     window_id      = 0;
-    int     dualmic_id     = 0;      // 0 = mono
+    /* Globals */
+    size_t                     backend_id = 0;  // 0 = AUTO ; sinon un des id du registre
+    std::vector<ChainElement>  modules;         // TODO: reflete l'audio_chain liste
+    size_t  ring_size          = 4096;
+    /* Audio */
+    int     sample_rate        = 48000;        // sample rate frequency
+    int     buffer_size        = 256;          // buffer size en nb samples
+    /* specific */
+    int     hop                = 256;    // window_size/4 = 75 % de recouvrement
+    int     window_size        = 1024;   // window_size of the fft
+    float   window_ratio       = 1.0f;   // 1.0 = synthese symetrique ; <1 = asym.
+    int     nb_bands           = 32;     // <= bands_max
+    FftMode fft_mode           = FftMode::R2C;
+    int     window_id          = 0;
+    int     dualmic_id         = 0;      // 0 = mono
 };
 
 // ---------------------------------------------------------------------------
-//  Capabilities du backend detecte -- c'est ICI que se resout GTX vs RTX :
+//  Capabilities du backend -- resout GTX vs RTX :
 //  l'utilisateur choisit "CUDA", le coeur expose ce qu'il a trouve.
 // ---------------------------------------------------------------------------
 struct BackendCaps {
-    std::string name;                 // ex. "NVIDIA GeForce GTX 1080"
-    bool        is_gpu       = false;
-    std::size_t vram_bytes   = 0;
-    int         cc_major     = 0;    // compute capability (6,1 = Pascal)
-    int         cc_minor     = 0;
+    size_t  backend_id      = 0;            // internal backend ID
+    size_t  backend_type    = kBackendAny;  // identifiant du type de backend
+    /* modules */
+    bool    prealloc_c2c    = false;        // autorise bascule R2C<->C2C a chaud
+    bool    share_fft_work  = true;         // workspace cuFFT unique partage
+    /* GPU */
+    bool        is_gpu      = false;        // detected gpu status
+    int         cc_major    = 0;            // compute capability (6,1 = Pascal)
+    int         cc_minor    = 0;
+    size_t      vram_bytes  = 0;            // ? video ram needed ?
+                                            // cannot know depend of nb of modules loaded
+                                            // or the vram used by the backend itself                                
     bool        has_fp16     = false;
-    bool        has_tensor   = false; // false sur Pascal -> chemin FP32
-    size_t      backend_type = kBackendAny; // identifiant du type de backend
+    bool        has_tensor   = false;           // false sur Pascal -> chemin FP32
+    std::string gpu_family     = "";                       // ex. "NVIDIA GeForce GTX 1080"
+    /*  */
+    std::string backend_name         = "Not defined";                       // ex. "NVIDIA GeForce GTX 1080"
 };
 
 // ---------------------------------------------------------------------------
@@ -216,11 +239,11 @@ struct BackendCaps {
 // ---------------------------------------------------------------------------
 struct ModuleInfo {
     size_t      id               = 0;
+    size_t      backend_type_id  = kBackendAny; // backend requis (kBackendAny = tous)
     ModuleKind  kind             = ModuleKind::Suppression;
+    bool        needs_gpu        = false;
     std::string name;
     std::string description;
-    bool        needs_gpu        = false;
-    size_t      backend_type_id  = kBackendAny; // backend requis (kBackendAny = tous)
 };
 
 struct TestResult {                   // self-test embarque par chaque module
@@ -242,7 +265,7 @@ struct TrackIO {
 //  Snapshots de lecture (remontee UI, hors temps reel). Le coeur les publie
 //  via double-buffer atomique : lecture coherente sans verrou.
 // ---------------------------------------------------------------------------
-struct Metrics {                      // un element par bande
+struct Metrics {                        // un element par bande
     std::vector<float> aggressiveness;
     std::vector<float> kurtosis;        // indicateur de musical noise
     std::vector<float> harmonicity;     // preservation de la voix
@@ -360,11 +383,6 @@ public:
     // Sommee au cablage pour la PDC. Doit etre constante apres creation.
     virtual int latency_samples() const noexcept = 0;
 
-    // [CTRL] applique une nouvelle config ; choisit seul chaud vs froid.
-    // 'out_how' detaille le chemin pris.
-    virtual Status reconfigure(const RuntimeConfig& cfg,
-                               ApplyResult& out_how) = 0;
-
     // [CTRL] Cable les pointeurs audio de l'interface sur le backend.
     // Appele par AudioProcessor apres prepare(). Le backend gere en interne
     // la suspension de son thread de traitement si necessaire.
@@ -386,7 +404,10 @@ public:
     // Appele par le backend lors d'un reconfigure() global. Le module
     // extrait de cfg ce qui le concerne (n, hop, num_bands, ...).
     // Peut reallouer des buffers internes -- jamais appele depuis le RT.
-    virtual Status reconfigure(const RuntimeConfig& cfg) = 0;
+    // applique une nouvelle config ; choisit seul chaud vs froid.
+    // 'out_how' detaille le chemin pris.
+    virtual Status reconfigure(const BackendCaps& b_caps, const RuntimeConfig& cfg,
+                               ApplyResult& how) = 0;
 
     // [RT] Buffer de sortie du module (RAM ou device ptr selon le contexte).
     // audio_chain, geré par le backend, cable ce pointeur comme entree du module suivant.
@@ -402,7 +423,7 @@ public:
 
     // [RT] Traitement d'un bloc. Le module lit depuis son entree cablee,
     // ecrit dans son output_buf(). Zéro allocation, zéro verrou.
-    virtual void process(int num_frames) noexcept = 0;
+    virtual void process(size_t num_frames) noexcept = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -452,7 +473,9 @@ public:
     // Le backend redimensionne ses ressources (scratch, streams) selon les
     // caps et cfg, puis propage aux modules installes via module->reconfigure().
     // Peut reallouer -- jamais appele depuis le RT.
-    virtual Status reconfigure(const EngineCaps& caps, const RuntimeConfig& cfg) = 0;
+    virtual Status reconfigure(const EngineCaps& e_caps, const RuntimeConfig& cfg) = 0;
+    // reconfigure 
+    virtual Status reconfigure(const BackendCaps& b_caps, const RuntimeConfig& cfg, ApplyResult& how) = 0;
 
     // [CTRL] Cable les pointeurs audio de l'interface sur le backend.
     // Appele par AudioProcessor apres prepare(). Stocke in/out/n_frames
@@ -464,7 +487,7 @@ public:
     // de fonctions pre-resolus. Zéro decision, zéro allocation.
     virtual Status process(const float* const* in,
                            float*              out,
-                           int                 num_frames) noexcept = 0;
+                           size_t              num_frames) noexcept = 0;
 
     // [CTRL] Declenche la mesure de latence reelle sur N blocs de bruit blanc.
     // Hors RT uniquement. Ecrit last_latency_ et last_stats_ a la fin,
@@ -512,6 +535,8 @@ class ODENISE_API Engine {
 public:
     virtual ~Engine() = default;
 
+    virtual Status reconfigure(const RuntimeConfig& cfg, ApplyResult& how) = 0;
+
     // [CTRL] capabilities du backend reellement actif (GTX vs RTX, VRAM...).
     virtual BackendCaps backendCaps() const = 0;
 
@@ -550,7 +575,14 @@ public:
     // [CTRL] stats de traitement (min/max/mean/budget/load).
     // Ref sur le membre interne mis a jour par callback depuis le backend.
     virtual const ProcessingStats& processingStats() const noexcept = 0;
+    // --- cycle de vie / structure ---------------------------------------
+    // [RT]   latence algorithmique courante (echantillons), a declarer en PDC.
+    virtual int latency_samples_rt() const noexcept = 0;
+    // [CTRL] Latence algorithmique declaree par ce module, en samples.
+    // Sommee au cablage pour la PDC. Doit etre constante apres creation.
+    virtual int latency_samples() const noexcept = 0;
 
+    virtual void setAudioIO(TrackIO io) const noexcept = 0;
     // --- remontee de metriques / spectres -------------------------------
     // [CTRL] copies coherentes des snapshots publies par le thread audio.
     virtual Metrics  metrics()  const = 0;
@@ -561,7 +593,7 @@ public:
 //  Fabrique. Renvoie nullptr en cas d'echec ; '*status' (optionnel) detaille.
 // ---------------------------------------------------------------------------
 ODENISE_API std::unique_ptr<Engine>
-createEngine(const EngineCaps& caps,
+createEngine(const EngineCaps& e_caps,
              const RuntimeConfig& cfg,
              Status* status = nullptr);
 
@@ -592,7 +624,7 @@ extern "C" {
 
 // Unique symbole exporte par chaque module (.so/.dll).
 // Le loader fait dlsym sur ce nom puis appelle entry(sample_rate, window_size_max).
-typedef odenise::ModuleBase* (*OdeniseModuleEntryFn)(int sample_rate, int window_size_max);
+typedef odenise::ModuleBase* (*OdeniseModuleEntryFn)(odenise::EngineCaps e_caps);
 
 #define ODENISE_MODULE_ENTRY_SYMBOL "odenise_module_entry"
 
