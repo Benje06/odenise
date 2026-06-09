@@ -77,10 +77,9 @@ void VuMeter::paint(juce::Graphics& g)
 
 // Construit la chaine de caracteristiques d'une AudioInterfaceInfo.
 // Format :
-//   Actuel  : sr=48000 Hz  buf=512 smp  lat=10.7 ms  bits=24
-//   Canaux  : 2
-//   Rates   : 44100  [48000]  96000  192000 Hz
-//   Buffers : 64  128  256  [512]  1024  2048 smp
+//   Sample rate: 44.1KHz  24bits 512 sample 10.7 ms 2 canaux
+//   Rates   : 44100  [48000]  96000  192000
+//   Buffers : 64  128  256  [512]  1024  2048
 static std::string buildInfoString(const odenise::audio::AudioInterfaceInfo& iface,
                                    bool show_inputs)
 {
@@ -166,29 +165,38 @@ JuceEditorComponent::JuceEditorComponent(JucePlugin& plugin)
     setSize(kWidth, kHeight);
     setResizeLimits(kWidth, kHeight, kWidth, kHeight);
 
-    //vu_in_.setTopLeftPosition()
     addAndMakeVisible(vu_in_);
+    addAndMakeVisible(vu_out_);
+
+    // Audio driver slection
+    label_driver_.setText("Driver", juce::dontSendNotification);
+    addAndMakeVisible(label_driver_);
+
+    combo_driver_.setTextWhenNothingSelected("-- Pilote Audio --");
+    combo_driver_.addListener(this);
+    addAndMakeVisible(combo_driver_);
+
     // -- Section entree --
-    label_in_iface_.setText("Entree", juce::dontSendNotification);
+    label_in_iface_.setText("In", juce::dontSendNotification);
     addAndMakeVisible(label_in_iface_);
 
     combo_in_iface_.setTextWhenNothingSelected("-- interface entree --");
     combo_in_iface_.addListener(this);
     addAndMakeVisible(combo_in_iface_);
 
-    label_in_ch_.setText("Canal", juce::dontSendNotification);
+    label_in_ch_.setText("Ch", juce::dontSendNotification);
     addAndMakeVisible(label_in_ch_);
 
     combo_in_ch_.setTextWhenNothingSelected("-- canal --");
     combo_in_ch_.addListener(this);
     addAndMakeVisible(combo_in_ch_);
 
-    //label_in_info_.setJustificationType(juce::Justification::topLeft);
+    label_in_info_.setJustificationType(juce::Justification::topLeft);
     label_in_info_.setMinimumHorizontalScale(1.0f);
     addAndMakeVisible(label_in_info_);
- /*
+ 
     // -- Section sortie --
-    label_out_iface_.setText("Interface sortie", juce::dontSendNotification);
+    label_out_iface_.setText("Out", juce::dontSendNotification);
     addAndMakeVisible(label_out_iface_);
 
     combo_out_iface_.setTextWhenNothingSelected("-- Sortie --");
@@ -199,15 +207,13 @@ JuceEditorComponent::JuceEditorComponent(JucePlugin& plugin)
     label_out_info_.setMinimumHorizontalScale(1.0f);
     addAndMakeVisible(label_out_info_);
 
-    label_out_ch_.setText("Canal", juce::dontSendNotification);
+    label_out_ch_.setText("Ch", juce::dontSendNotification);
     addAndMakeVisible(label_out_ch_);
 
     combo_out_ch_.setTextWhenNothingSelected("-- canal --");
     combo_out_ch_.addListener(this);
     addAndMakeVisible(combo_out_ch_);
 
-    addAndMakeVisible(vu_out_);
-*/
     populateCombos();
     startTimerHz(10);
 }
@@ -245,53 +251,70 @@ void JuceEditorComponent::resized()
     // Section entree (haut), separateur, section sortie (bas).
 
     const int content_w = kWidth  - kGap * 2;
-    const int ctrl_w    = content_w - kVuW - kGap;
-
+    const int content_end_w = content_w - kVuW;
     int y = kGap;
+    int x = kGap;
+    int in_pos;
+    int out_pos;
+    // ---- Section Audio driver ------------------------------------------------
 
-    // ---- Section entree ------------------------------------------------
-    // Ligne interface entree
-    label_in_iface_.setBounds(kGap,              y, kLabelW,           kRowH);
-    combo_in_iface_.setBounds(kGap + kLabelW,    y, ctrl_w - kLabelW,  kRowH);
-    // Vu-metre entree : couvre les lignes interface + info + canal
-    const int vu_in_y = y;
-
-    y += kRowH + kGap;
-
-    // Info entree
-    label_in_info_.setBounds(kGap + kLabelW, y, ctrl_w - kLabelW, kInfoH);
-    y += kInfoH + kGap;
-
-    // Ligne canal entree
-    label_in_ch_.setBounds(kGap,           y, kLabelW,          kRowH);
-    combo_in_ch_.setBounds(kGap + kLabelW, y, ctrl_w - kLabelW, kRowH);
+    // Audio Driver
+    label_driver_.setBounds( x, y, kLabelW,  kRowH);
+    x += kLabelW;
+    combo_driver_.setBounds( x, y, kComboInterfaceW,  kRowH);
+    x += kComboInterfaceW ;
     y += kRowH;
 
-    const int vu_in_h = y - vu_in_y;
-    vu_in_.setBounds(kGap + ctrl_w + kGap, vu_in_y, kVuW, vu_in_h);
+    // ---- Section interfaces ------------------------------------------------
+    // interface entree
+    x = kGap;
+    in_pos=x;
+    label_in_iface_.setBounds( x, y, kLabelW,  kRowH);
+    x += kLabelW;
+    combo_in_iface_.setBounds( x, y, kComboInterfaceW,  kRowH);
+    x += kComboInterfaceW ;
+
+    // canal entree
+    label_in_ch_.setBounds( x , y, kLabelW, kRowH);
+    x += kLabelW;
+    combo_in_ch_.setBounds( x , y, kComboChannelW, kRowH);
+    x += kComboChannelW;
+
+    // interface sortie
+    out_pos=x;
+    label_out_iface_.setBounds( x , y, kLabelW, kRowH);
+    x += kLabelW;
+    combo_out_iface_.setBounds( x , y, kComboInterfaceW, kRowH);
+    x += kComboInterfaceW ;
+
+    // canal sortie
+    label_out_ch_.setBounds( x , y, kLabelW, kRowH);
+    x += kLabelW;
+    combo_out_ch_.setBounds( x , y, kComboChannelW, kRowH);
+    x += kComboInterfaceW;
+
+    x = kGap;
+    y += kRowH;
+    // Info entree
+    label_in_info_.setBounds(  in_pos, y, content_w - out_pos, kInfoH);
+    // Info sortie
+    label_out_info_.setBounds( out_pos, y, content_w - out_pos, kInfoH);
+    
 
     // ---- Separateur ----------------------------------------------------
     y += kSepH;
 
-    // ---- Section sortie ------------------------------------------------
-    const int vu_out_y = y;
+    // ---- chaine de traitement ------------------------------------------------
+    const int vu_h = kHeight - y;
+    const int vu_top = y;
+    
+    vu_in_.setBounds( x, vu_top, kVuW, vu_h);
+    vu_out_.setBounds( content_end_w, vu_top, kVuW, vu_h);
 
-    // Ligne interface sortie
-    label_out_iface_.setBounds(kGap,             y, kLabelW,          kRowH);
-    combo_out_iface_.setBounds(kGap + kLabelW,   y, ctrl_w - kLabelW, kRowH);
-    y += kRowH + kGap;
+    
 
-    // Info sortie
-    label_out_info_.setBounds(kGap + kLabelW, y, ctrl_w - kLabelW, kInfoH);
-    y += kInfoH + kGap;
 
-    // Ligne canal sortie
-    label_out_ch_.setBounds(kGap,           y, kLabelW,          kRowH);
-    combo_out_ch_.setBounds(kGap + kLabelW, y, ctrl_w - kLabelW, kRowH);
-    y += kRowH;
 
-    const int vu_out_h = y - vu_out_y;
-    vu_out_.setBounds(kGap + ctrl_w + kGap, vu_out_y, kVuW, vu_out_h);
 }
 
 // ----------------------------------------------------------------------------

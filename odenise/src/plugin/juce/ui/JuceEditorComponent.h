@@ -84,6 +84,10 @@ private:
     // -----------------------------------------------------------------------
     JucePlugin& plugin_;
 
+    // -- Section Driver --
+    juce::Label    label_driver_;
+    juce::ComboBox combo_driver_;    // Driver Audio
+
     // -- Section entree --
     juce::Label    label_in_iface_;
     juce::ComboBox combo_in_iface_;    // interfaces d'entree
@@ -102,11 +106,13 @@ private:
 
     static constexpr int kWidth   = 560;
     static constexpr int kHeight  = 480;
-    static constexpr int kVuW     = 60;   // largeur colonne vu-metre
-    static constexpr int kLabelW  = 130;  // largeur colonne labels
-    static constexpr int kRowH    = 28;
-    static constexpr int kInfoH   = 90;
-    static constexpr int kGap     = 8;
+    static constexpr int kVuW     = 40;   // largeur colonne vu-metre
+    static constexpr int kLabelW  = 20;  // largeur colonne labels
+    static constexpr int kComboInterfaceW  = 120;
+    static constexpr int kComboChannelW  = 60;
+    static constexpr int kInfoH   = 80;
+    static constexpr int kGap     = 4;
+    static constexpr int kRowH    = 20;
     static constexpr int kSepH    = 16;  // separateur entre sections
 };
 
