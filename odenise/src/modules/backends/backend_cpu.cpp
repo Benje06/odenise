@@ -61,6 +61,7 @@ CpuBackendImpl::CpuBackendImpl(odenise::EngineCaps e_caps)
     : ring_size_max_(e_caps.ring_size_max),
     ctx_(e_caps.ring_size_max) {
         S_Thread();
+        P_Thread();
         //S_Thread2();
     }
 
@@ -87,14 +88,18 @@ bool CpuBackendImpl::Run() {
 #ifdef _MSC_VER
     if (stop_requested()) return false;
 #endif
-    
+    std::unique_lock<std::mutex> lock(mtx_);
+    cv_.wait(lock, [this] { 
+        // temporary for emptyy run
+        std::this_thread::yield();
+        return !pause_requested();
+    });
     // TODO : traitement RT
     // t_in_  = std::chrono::steady_clock::now();
     // chain_.process(n_frames_);
     // t_out_ = std::chrono::steady_clock::now();
 
-    // temporary for emptyy run
-    std::this_thread::yield();
+
     return true;
 }
 
@@ -110,13 +115,17 @@ bool CpuBackendImpl::Run2() {
 #ifdef _MSC_VER
     if (stop2_requested()) return false;
 #endif
+    std::unique_lock<std::mutex> lock(mtx_);
+    cv_.wait(lock, [this] {
+        std::this_thread::yield();
+        return !pause_requested();
+    });
     // TODO : moyenne glissante depuis t_in_ / t_out_
         // Lit les timestamps atomiques poses par Run(), accumule sur une
         // fenetre glissante, ecrit last_stats_ + last_latency_,
         // pose measure_ready_(release).
 
-    // temporary for emptyy run()
-    std::this_thread::yield();
+
     return true;
 }
 

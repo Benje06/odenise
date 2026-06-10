@@ -170,12 +170,7 @@ int Thread::S_Thread() {
     try {
         stop_.store(false, std::memory_order_release);
         thread_ = std::thread([this] {
-            std::unique_lock<std::mutex> lock(mtx_);
-            while (Run()) {
-                cv_.wait(lock, [this] {
-                    return !pause_.load(std::memory_order_acquire);
-                });
-            }
+            while (Run()) {}
         });
         LOG("Thread: start");
     } catch (const std::exception& e) {
@@ -192,12 +187,7 @@ int Thread::S_Thread2() {
     try {
         stop2_.store(false, std::memory_order_release);
         thread2_ = std::thread([this] {
-            std::unique_lock<std::mutex> lock(mtx2_);
-            while (Run2()) {
-                cv2_.wait(lock, [this] {
-                    return !pause2_.load(std::memory_order_acquire);
-                });
-            }
+            while (Run2()) {};
         });
         LOG("Thread2: start");
     } catch (const std::exception& e) {
@@ -229,7 +219,7 @@ int Thread::J_Thread2() {
 /* T_Thread : signale l'arrêt à thread_ puis joint. */
 int Thread::T_Thread() {
     LOG(std::string(" -> ") + __func__);
-    stop_.store(true, std::memory_order_release);
+    stop_.store(true, std::memory_order_release);   // specific windows msvc
     J_Thread();
     LOG(std::string("<-  ") + __func__);
     return 0;
@@ -238,7 +228,7 @@ int Thread::T_Thread() {
 /* T_Thread2 : signale l'arrêt à thread2_ puis joint. */
 int Thread::T_Thread2() {
     LOG(std::string(" -> ") + __func__);
-    stop2_.store(true, std::memory_order_release);
+    stop2_.store(true, std::memory_order_release);   // specific windows msvc
     J_Thread2();
     LOG(std::string("<-  ") + __func__);
     return 0;

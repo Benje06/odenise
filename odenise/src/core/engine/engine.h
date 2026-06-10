@@ -526,6 +526,7 @@ protected:
     TrackIO                 io_;
     virtual bool Run() = 0;
     virtual bool Run2() = 0;
+    std::mutex mtx_;
 };
 
 // ===========================================================================

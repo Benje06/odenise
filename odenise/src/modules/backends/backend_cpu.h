@@ -16,6 +16,7 @@
 #include <thread>       // std::this_thread::yield
 #include <cstddef>      // std::size_t, std::byte
 #include <vector>       // std::vector
+#include <atomic>
 
 // ============================================================================
 //  CpuBackendContext -- contexte de ressource CPU.

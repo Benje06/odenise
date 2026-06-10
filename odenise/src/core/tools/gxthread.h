@@ -136,8 +136,7 @@ class Thread {
 private:
     std::thread          thread_;
     std::thread          thread2_;
-    std::mutex mtx_;
-    std::condition_variable cv_;
+
     std::mutex mtx2_;
     std::condition_variable cv2_;
 
@@ -154,6 +153,7 @@ private:
     /* lance custom_fn_(this) dans thread_ -- appelé par le constructeur interne */
     int S_Thread_fn();
 protected:
+    std::condition_variable cv_, cv_2;
     /* Confirmations de pause -- écrites par Run()/Run2() quand ils entrent
      * et sortent de pause. Lues par P_Thread()/P_Thread2() hors RT. */
     std::atomic<bool>    paused_ {false};
