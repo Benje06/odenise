@@ -17,6 +17,7 @@ JucePlugin::JucePlugin()
     // Scan initial des peripheriques disponibles.
     // L'editeur pourra relancer un scan via layer_.scanDevices().
     layer_.scanDrivers();
+    //layer_.processor()->engine()->pause_backend();   
 }
 
 // ----------------------------------------------------------------------------
@@ -25,6 +26,7 @@ void JucePlugin::prepareToPlay(double sample_rate, int max_block_size)
     layer_.processor()->prepare(
         static_cast<int>(sample_rate),
         max_block_size);
+    //ayer_.processor()->release(); 
 }
 
 // ----------------------------------------------------------------------------

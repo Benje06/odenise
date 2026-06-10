@@ -515,6 +515,8 @@ public:
                                 const ProcessingStats& stats,
                                 int measured_samples) noexcept             = nullptr;
     void* callback_user = nullptr;  // contexte commun aux deux callbacks
+    void pause(){ P_Thread2(); P_Thread(); }
+    void restart(){ R_Thread(); R_Thread2(); }
 protected:
     // Ecrit par measure() hors RT, lu par l'engine/UI hors RT via les
     // accesseurs publics. Jamais touche par process() -- zéro impact RT.
@@ -587,6 +589,8 @@ public:
     // [CTRL] copies coherentes des snapshots publies par le thread audio.
     virtual Metrics  metrics()  const = 0;
     virtual Spectrum spectrum() const = 0;
+    virtual void pause_backend() const = 0;
+    virtual void restart_backend() const = 0;
 };
 
 // ---------------------------------------------------------------------------

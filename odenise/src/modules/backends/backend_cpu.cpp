@@ -61,13 +61,13 @@ CpuBackendImpl::CpuBackendImpl(odenise::EngineCaps e_caps)
     : ring_size_max_(e_caps.ring_size_max),
     ctx_(e_caps.ring_size_max) {
         S_Thread();
-        S_Thread2();
+        //S_Thread2();
     }
 
 CpuBackendImpl::~CpuBackendImpl() {
-    R_Thread2();
+    //R_Thread2();
     R_Thread();
-    T_Thread2();
+    //T_Thread2();
     T_Thread();
 }
 
@@ -83,19 +83,18 @@ CpuBackendImpl::~CpuBackendImpl() {
 //
 // -----------------------------------------------------------------------
 bool CpuBackendImpl::Run() {
-    if (pause_requested()) {
-        paused_.store(true, std::memory_order_release);
-        while (pause_requested()) { std::this_thread::yield(); }
-        paused_.store(false, std::memory_order_release);
-        return true;
-    }
+
 #ifdef _MSC_VER
     if (stop_requested()) return false;
 #endif
+    
     // TODO : traitement RT
     // t_in_  = std::chrono::steady_clock::now();
     // chain_.process(n_frames_);
     // t_out_ = std::chrono::steady_clock::now();
+
+    // temporary for emptyy run
+    std::this_thread::yield();
     return true;
 }
 
@@ -107,12 +106,7 @@ bool CpuBackendImpl::Run() {
 //    - TODO : brancher le calcul reel quand Run() posera les timestamps.
 // -----------------------------------------------------------------------
 bool CpuBackendImpl::Run2() {
-    if (pause2_requested()) {
-        paused2_.store(true, std::memory_order_release);
-        while (pause2_requested()) { std::this_thread::yield(); }
-        paused2_.store(false, std::memory_order_release);
-        return true;
-    }
+
 #ifdef _MSC_VER
     if (stop2_requested()) return false;
 #endif
@@ -120,6 +114,8 @@ bool CpuBackendImpl::Run2() {
         // Lit les timestamps atomiques poses par Run(), accumule sur une
         // fenetre glissante, ecrit last_stats_ + last_latency_,
         // pose measure_ready_(release).
+
+    // temporary for emptyy run()
     std::this_thread::yield();
     return true;
 }

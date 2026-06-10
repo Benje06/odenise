@@ -11,6 +11,7 @@ JuceAudioLayer::JuceAudioLayer()
     : processor_()
     , editor_(&processor_)
 {
+    //processor_.engine()->pause_backend();    
     auto result = device_manager_.initialise(0, 0, nullptr, false);
     if (result.isNotEmpty()) {
         std::string msg_err = error(__func__,
@@ -97,7 +98,7 @@ void JuceAudioLayer::scanDevices(int driver_id)
 
     editor_.setAudioInputs (std::move(inputs));
     editor_.setAudioOutputs(std::move(outputs));
-
+    //processor_.engine()->pause_backend();  
     std::string msg = _("JuceAudioLayer: scan driver ");
     msg += std::to_string(driver_id);
     msg += " in="; msg += std::to_string(editor_.audioInputs().size());
@@ -113,6 +114,7 @@ void JuceAudioLayer::scanDevices(int driver_id)
 void JuceAudioLayer::probeDevice(int driver_id, int interface_id,
                                  const std::string& name, bool want_inputs)
 {
+
     const auto& device_types = device_manager_.getAvailableDeviceTypes();
     if (driver_id < 0 || driver_id >= device_types.size()) return;
 
@@ -131,7 +133,7 @@ void JuceAudioLayer::probeDevice(int driver_id, int interface_id,
         LOG_ERR(msg_err);
         return;
     }
-
+               
     odenise::audio::AudioInterfaceInfo info;
     info.id   = interface_id;
     info.name = name;
@@ -146,9 +148,27 @@ void JuceAudioLayer::probeDevice(int driver_id, int interface_id,
     for (int bs : dev->getAvailableBufferSizes())
         info.supported_buffer_sizes.push_back(bs);
 
+    const int n = want_inputs ? n_in : n_out;
+    const auto ch_names = want_inputs
+                          ? dev->getInputChannelNames()
+                          : dev->getOutputChannelNames();
+    for (int ch = 0; ch < n; ++ch)
+        info.channel_names.push_back(ch_names[ch].toStdString());
+
     // Valeurs courantes rapportees par le driver sans open().
     // Aucun fallback -- on affiche uniquement ce que le driver retourne.
     info.current_sample_rate = static_cast<int>(dev->getCurrentSampleRate());
+
+    juce::BigInteger ch_mask;
+    ch_mask.setRange(0, n, true);
+    auto err = dev->open(ch_mask, juce::BigInteger{},
+                     info.current_sample_rate,
+                     dev->getDefaultBufferSize());
+    if(! err.isEmpty()) {
+        LOG("Cannot open device");
+        return;
+    }  
+
     if( want_inputs ){
         info.input_latency_samples =  dev->getInputLatencyInSamples();
     }else{
@@ -158,13 +178,8 @@ void JuceAudioLayer::probeDevice(int driver_id, int interface_id,
     info.current_buffer_size = dev->getCurrentBufferSizeSamples();
     info.current_bit_depth   = dev->getCurrentBitDepth();
     info.xrun_count          = dev->getXRunCount();
-    const int n = want_inputs ? n_in : n_out;
-    const auto ch_names = want_inputs
-                          ? dev->getInputChannelNames()
-                          : dev->getOutputChannelNames();
-    for (int ch = 0; ch < n; ++ch)
-        info.channel_names.push_back(ch_names[ch].toStdString());
 
+    dev->close();    
     delete dev;
 
     if (want_inputs)
@@ -177,9 +192,15 @@ void JuceAudioLayer::probeDevice(int driver_id, int interface_id,
                       : _("JuceAudioLayer: probed output '");
     msg += name;
     msg += "' ch="; msg += std::to_string(n);
-    msg += " sr="; msg += std::to_string(info.current_sample_rate);
-    msg += " buf="; msg += std::to_string(info.current_buffer_size);
+    msg += " current_sample_rate="; msg += std::to_string(info.current_sample_rate);
+    msg += " input_latency_samples="; msg += std::to_string(info.input_latency_samples);
+    msg += " output_latency_samples="; msg += std::to_string(info.output_latency_samples);
+    msg += " default_buffer_size="; msg += std::to_string(info.default_buffer_size);
+    msg += " current_buffer_size="; msg += std::to_string(info.current_buffer_size);
+    msg += " current_bit_depth="; msg += std::to_string(info.current_bit_depth);
+    msg += " xrun_count="; msg += std::to_string(info.xrun_count);
     LOG(msg);
+
 }
 
 } // namespace odenise::plugin

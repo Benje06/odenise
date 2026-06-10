@@ -69,6 +69,7 @@ void AudioProcessor::release() {
     // La suspension du backend est geree en interne par celui-ci lors des
     // operations qui le necessitent (setAudioIO, reconfigure...).
     // Aucun appel explicite de release() requis sur l'engine.
+    //engine_->pause_backend();
     std::string msg = _("AudioProcessor: released");
     LOG(msg);
 }

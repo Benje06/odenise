@@ -257,6 +257,12 @@ private:
     // -----------------------------------------------------------------------
     //  Gestion du backend
     // -----------------------------------------------------------------------
+    void pause_backend() const{
+        backend_->pause();
+    };
+    void restart_backend() const{
+        backend_->restart();
+    };
     void releaseBackend() {
         if (backend_) {
             // Debranche les callbacks avant dechargement.
