@@ -27,16 +27,23 @@
 #ifndef _TOOLS_DEBUG_H
     #define _TOOLS_DEBUG_H
     #ifdef __cplusplus
-        #ifdef DEBUG_TOOL
+    #ifdef _MSC_VER
+        #define CURRENT_FUNCTION __FUNCSIG__
+    #elif defined(__GNUC__)
+        #define CURRENT_FUNCTION __PRETTY_FUNCTION__
+    #else
+        #define CURRENT_FUNCTION __func__
+    #endif
+    #if defined(DEBUG_TOOL) || defined(DEBUG_TOOL_AS_ERROR)
         #   define PRE_LOG(str1, str2, ...)    (std::string(str1) + std::string("-> ") + std::string(str2))
         #   define POST_LOG(str1, str2, ...)   (std::string(str1) + std::string(" <-") + std::string(str2))
         #   define TRACE(f, ...)   f "\n", ##__VA_ARGS__
         #   ifdef DEBUG_TOOL_AS_ERROR
-        #       define LOG_IN()  (std::string(" -> ") + __PRETTY_FUNCTION__ + std::string(" line ") + std::to_string(__LINE__) + std::string(" of ") + __FILE__)
-        #       define LOG_OUT() (std::string("<-  ") + __PRETTY_FUNCTION__)
+        #       define LOG_IN()  (std::string(" -> ") + CURRENT_FUNCTION + std::string(" line ") + std::to_string(__LINE__) + std::string(" of ") + __FILE__)
+        #       define LOG_OUT() (std::string("<-  ") + CURRENT_FUNCTION)
         #   else
-        #       define LOG_IN()  (std::string(" -> ") + __func__)
-        #       define LOG_OUT() (std::string("<-  ") + __func__)
+        #       define LOG_IN()  (std::string(" -> ") + CURRENT_FUNCTION)
+        #       define LOG_OUT() (std::string("<-  ") + CURRENT_FUNCTION)
         #   endif /* DEBUG_TOOL_AS_ERROR */
         #else  /* NOT DEBUG_TOOL */
         #   define PRE_LOG(str1, str2)  (void)(0)

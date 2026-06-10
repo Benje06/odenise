@@ -47,7 +47,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #  tournent sans install. L'install (cmake --install) utilise le prefix reel.
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
-
+# set the LOG_IN LOG_OUT content
+set(DEBUG_TOOL DEBUG_TOOL)
 set(ODENISE_VERSION_DIR "odenise/${PROJECT_VERSION}")
 
 if(MSVC)
@@ -170,4 +171,5 @@ message(STATUS "   Plugin (JUCE)  : ${ODENISE_PLUGIN_READY}")
 message(STATUS "   Modules        : ${ODENISE_BUILD_MODULES}")
 message(STATUS "   Tests          : ${ODENISE_BUILD_TESTS}")
 message(STATUS "   Module dir     : ${ODENISE_MODULE_OUTPUT_DIR}")
+message(STATUS "   DEBUG          : ${DEBUG_TOOL}")
 message(STATUS "---------------------------------------------------------")

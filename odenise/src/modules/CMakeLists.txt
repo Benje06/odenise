@@ -49,7 +49,7 @@ if(MSVC)
 else()
     target_compile_options(passthrough PRIVATE -Wall -Wextra -Wpedantic)
 endif()
-
+target_compile_definitions(passthrough PRIVATE ${DEBUG_TOOL})
 install(TARGETS passthrough
         LIBRARY DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/suppression
         RUNTIME DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/suppression)
@@ -75,6 +75,7 @@ if(MSVC)
 else()
     target_compile_options(backend_cpu PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+target_compile_definitions(backend_cpu PRIVATE DEBUG_TOOL ${DEBUG_TOOL})
 
 install(TARGETS backend_cpu
         LIBRARY DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/backends

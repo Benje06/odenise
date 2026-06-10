@@ -89,20 +89,21 @@ public:
         const auto dir = moduleDir();
         const int nb_module = registry_.scan_modules(dir);
         std::string msg;
-        msg = __func__ ;
+        msg = CURRENT_FUNCTION ;
         msg += _(": created with windows_size=");
         msg += ( cfg_.window_size ? std::to_string(cfg_.window_size) : "Unspecified windows_size");
         msg += " , ";
         msg += std::to_string(nb_module);
         msg += _(" modules founds.");
-        msg += ")";
         LOG(msg);
 
-        msg = _("engine: Load Backend:");
+        msg = CURRENT_FUNCTION;
+        msg += _(": Load Backend:");
         LOG(msg);
         bindBackend(caps_.backend_id);
 
-        msg = _("engine: Load Module:");
+        msg = CURRENT_FUNCTION;
+        msg += _(": Load Module:");
         LOG(msg);
         if (cfg_.modules.size() != 0 ){
             for ( auto mod = cfg_.modules.begin(); mod != cfg_.modules.end() -1; mod++){
@@ -156,10 +157,10 @@ public:
         const bool backend_changed = (cfg.backend_id != cfg_.backend_id);
         cfg_ = cfg;
 
-        if (backend_changed)
+        if (backend_changed){
             how  = ApplyResult::Cold;
-
             bindModule(cfg_.backend_id);
+        }
 
         if (backend_)
             backend_->reconfigure(caps_, cfg_);
@@ -174,14 +175,16 @@ public:
     }
 
     void setAudioIO(TrackIO io) const noexcept override {
+        LOG(LOG_IN());
         if (!backend_) {
-            std::string msg_err = error(__func__,
+            std::string msg_err = error(CURRENT_FUNCTION,
                 _("engine: setAudioIO called without backend"),
                 _("ignored"));
             LOG_ERR(msg_err);
             return;
         }
         backend_->setAudioIO(io);
+        LOG(LOG_OUT());
     }
 
     /* Param to be set by the ui to the specialized module */
@@ -312,7 +315,9 @@ private:
         // Le backend demarre son thread de traitement ici.
         backend_->reconfigure(caps_, cfg_);
 
-        std::string msg = _("engine: load backend with available_id=");
+        std::string msg;
+        msg = CURRENT_FUNCTION;
+        msg += _(": loaded backend with available_id=");
         msg += std::to_string(available_id);
         msg += _(" name='");
         msg += (backend_->info_c()->name ? backend_->info_c()->name : "name not set");
@@ -378,7 +383,7 @@ private:
         module_id_ = loaded_id;
 
         if (!backend_ || !backend_->install_module(module_, static_cast<ModuleKind>(module_->info_c()->kind), 0) ) {
-            std::string msg_err = error(__func__,
+            std::string msg_err = error(CURRENT_FUNCTION,
                 _("Module install chainning failed"),
                 _("id=") + std::to_string(loaded_id));
             LOG_ERR(msg_err);
@@ -390,6 +395,8 @@ private:
 
         std::string msg = _("engine: bound module id=");
         msg += std::to_string(module_id_);
+        msg += _(" name=");
+        msg += module_->info_c()->name;
         LOG(msg);
     }
 

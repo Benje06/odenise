@@ -41,7 +41,7 @@ bool AudioProcessor::prepare(double sample_rate, int block_size) {
 
     ApplyResult how;
     engine_->reconfigure(cfg_, how);
-
+    engine_->pause_backend();
     std::string msg = _("AudioProcessor: prepared sr=");
     msg += std::to_string(sample_rate);
     msg += _(" block=");
