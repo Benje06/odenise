@@ -14,7 +14,6 @@
 # ============================================================================
 
 add_library(odenise_chain SHARED
-    ${CMAKE_SOURCE_DIR}/src/core/chain/audio_chain.h
     ${CMAKE_SOURCE_DIR}/src/core/chain/audio_chain.cpp)
 
 set_target_properties(odenise_chain PROPERTIES
@@ -32,14 +31,15 @@ target_include_directories(odenise_chain
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/engine>
         $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>
     PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/core/tools
         ${CMAKE_SOURCE_DIR}/src/core/registry
-        ${CMAKE_SOURCE_DIR}/src/core/tools)
+)
 
 target_compile_features(odenise_chain PUBLIC cxx_std_20)
 target_compile_definitions(odenise_chain PRIVATE
     ODENISE_BUILD_LIBRARY=1
     CHAIN_EXPORTS=1
-    DEBUG_TOOL=1)
+    ${DEBUG_TOOL})
 
 # Depend de odenise_log pour LOG/LOG_ERR dans audio_chain.cpp.
 target_link_libraries(odenise_chain PUBLIC odenise_log)

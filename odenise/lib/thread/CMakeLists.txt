@@ -35,7 +35,7 @@ target_compile_features(odenise_thread PUBLIC cxx_std_20)
 target_compile_definitions(odenise_thread PRIVATE
     THREAD_EXPORTS=1
     ODENISE_BUILD_LIBRARY=1
-    DEBUG_TOOL=1)
+    ${DEBUG_TOOL})
 
 target_link_libraries(odenise_thread PUBLIC odenise_log)
 

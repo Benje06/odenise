@@ -100,7 +100,8 @@ void JuceAudioLayer::scanDevices(int driver_id)
     editor_.setAudioOutputs(std::move(outputs));
     //processor_.engine()->pause_backend();  
     std::string msg = _("JuceAudioLayer: scan driver ");
-    msg += std::to_string(driver_id);
+    msg += device_type->getTypeName().toStdString();
+    msg += " id="; msg += std::to_string(driver_id);
     msg += " in="; msg += std::to_string(editor_.audioInputs().size());
     msg += " out="; msg += std::to_string(editor_.audioOutputs().size());
     LOG(msg);
@@ -192,12 +193,15 @@ void JuceAudioLayer::probeDevice(int driver_id, int interface_id,
                       : _("JuceAudioLayer: probed output '");
     msg += name;
     msg += "' ch="; msg += std::to_string(n);
-    msg += " current_sample_rate="; msg += std::to_string(info.current_sample_rate);
-    msg += " input_latency_samples="; msg += std::to_string(info.input_latency_samples);
-    msg += " output_latency_samples="; msg += std::to_string(info.output_latency_samples);
-    msg += " default_buffer_size="; msg += std::to_string(info.default_buffer_size);
-    msg += " current_buffer_size="; msg += std::to_string(info.current_buffer_size);
-    msg += " current_bit_depth="; msg += std::to_string(info.current_bit_depth);
+    msg += " sample_rate="; msg += std::to_string(info.current_sample_rate);
+    if(want_inputs){
+        msg += " input_latency_samples="; msg += std::to_string(info.input_latency_samples);
+    }else{
+        msg += " output_latency_samples="; msg += std::to_string(info.output_latency_samples);
+    }
+    //msg += " default_buffer_size="; msg += std::to_string(info.default_buffer_size);
+    msg += " buffer_size="; msg += std::to_string(info.current_buffer_size);
+    msg += " bit_depth="; msg += std::to_string(info.current_bit_depth);
     msg += " xrun_count="; msg += std::to_string(info.xrun_count);
     LOG(msg);
 

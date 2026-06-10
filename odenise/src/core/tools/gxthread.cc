@@ -201,36 +201,36 @@ int Thread::S_Thread2() {
 }
 
 int Thread::J_Thread() {
-    LOG(std::string(" -> ") + __func__);
+    LOG(LOG_IN());
     if (thread_.joinable())
         thread_.join();
-    LOG(std::string("<-  ") + __func__);
+    LOG(LOG_OUT());
     return 0;
 }
 
 int Thread::J_Thread2() {
-    LOG(std::string(" -> ") + __func__);
+    LOG(LOG_IN());
     if (thread2_.joinable())
         thread2_.join();
-    LOG(std::string("<-  ") + __func__);
+    LOG(LOG_OUT());
     return 0;
 }
 
 /* T_Thread : signale l'arrêt à thread_ puis joint. */
 int Thread::T_Thread() {
-    LOG(std::string(" -> ") + __func__);
+    LOG(LOG_IN());
     stop_.store(true, std::memory_order_release);   // specific windows msvc
     J_Thread();
-    LOG(std::string("<-  ") + __func__);
+    LOG(LOG_OUT());
     return 0;
 }
 
 /* T_Thread2 : signale l'arrêt à thread2_ puis joint. */
 int Thread::T_Thread2() {
-    LOG(std::string(" -> ") + __func__);
+    LOG(LOG_IN());
     stop2_.store(true, std::memory_order_release);   // specific windows msvc
     J_Thread2();
-    LOG(std::string("<-  ") + __func__);
+    LOG(LOG_OUT());
     return 0;
 }
 

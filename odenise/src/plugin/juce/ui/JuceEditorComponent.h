@@ -74,10 +74,16 @@ private:
     void comboBoxChanged(juce::ComboBox* cb)   override;
 
     // Peuple les combos d'interfaces depuis audioInputs() / audioOutputs().
-    void populateCombos();
+    void populateCombosDriver();
     
     // Repeuple les combos interfaces + canaux apres changement de driver.
-    void populateInterfaceCombos();
+    void populateCombosInterface();
+    
+    // Peuple la liste des backend
+    void populateComboBackends();
+
+    // Peuple la liste des modules
+    void populateComboModules();
 
     // Met a jour label + combo canaux + VuMeter pour la section entree.
     void updateInputInfo(int interface_id);
@@ -85,13 +91,20 @@ private:
     // Met a jour label + combo canaux + VuMeter pour la section sortie.
     void updateOutputInfo(int interface_id);
 
+
     // -----------------------------------------------------------------------
     JucePlugin& plugin_;
 
     // -- Section Driver --
-    juce::Label    label_driver_;
-    juce::ComboBox combo_driver_;    // Driver Audio
-
+    juce::Label    label_drv_;
+    juce::ComboBox combo_drv_;        // Driver Audio
+    // backend
+    juce::Label    label_bcknd_;
+    juce::ComboBox combo_bcknd_;      // backend compute
+    // modules
+    juce::ComboBox combo_mods_;       // modules
+    // processing latencie
+    juce::Label    label_rnd_trp_;    // Label latence round-trip    
     // -- Section entree --
     juce::Label    label_in_iface_;
     juce::ComboBox combo_in_iface_;    // interfaces d'entree
@@ -108,16 +121,19 @@ private:
     juce::ComboBox combo_out_ch_;      // canaux de sortie
     VuMeter        vu_out_;            // vu-metre sortie
 
-    static constexpr int kWidth   = 560;
-    static constexpr int kHeight  = 480;
-    static constexpr int kVuW     = 40;   // largeur colonne vu-metre
-    static constexpr int kLabelW  = 20;  // largeur colonne labels
-    static constexpr int kComboInterfaceW  = 120;
-    static constexpr int kComboChannelW  = 60;
-    static constexpr int kInfoH   = 180;
-    static constexpr int kGap     = 4;
-    static constexpr int kRowH    = 20;
-    static constexpr int kSepH    = 16;  // separateur entre sections
+    static constexpr int kWidth             = 560;
+    static constexpr int kHeight            = 480;
+    static constexpr int kVuW               = 40;   // largeur colonne vu-metre
+    static constexpr int dGap               = 10;
+    static constexpr int kComboDrvW         = 110;
+    static constexpr int kLabelRndTrpW      = kWidth - (2*kComboDrvW) - 20;   // largeur colonne labels
+    static constexpr int kLabelW            = 30;   // largeur colonne labels
+    static constexpr int kComboIfaceW       = 110;
+    static constexpr int kComboChnlW        = 100;
+    static constexpr int kInfoH             = 220;
+    static constexpr int kGap               = 4;
+    static constexpr int kRowH              = 20;
+    static constexpr int kSepH              = 16;   // separateur entre sections
 };
 
 } // namespace odenise::plugin

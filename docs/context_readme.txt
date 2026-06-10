@@ -12,10 +12,10 @@ s'aide des Librairies: gxthread (std::thread ou pthread), audio_chain (routeur i
 
                                                                            CPU -- GPU --------- \
                                                        module                \    /              \
-                                                  loader/registry    compute module dispatcher    |
-                                                         |                     \/                 |
-   UI  <-> AudioEditor <->  AudioProcssesor     ->     engine     <->        backend     ->    modules
-    |                              |\------------------------------------------/\                 |
+    UI <--------------------> AudioEditor ---\?    loader/registry    compute module dispatcher   |
+    |                              |          \          |                     \/                 |
+    |                        AudioProcessor ---\->     engine     <->        backend     ->    modules
+    |                              |  \-----------------???--------------------/\                 |
     |                              |                                             \                |
    VST <----------------->    JUCE / ALSA                                         \ ----- \    thread
                                    |                                                       \      |
@@ -45,6 +45,10 @@ s'aide des Librairies: gxthread (std::thread ou pthread), audio_chain (routeur i
               │
               ▼
             sortie
+
+- bouton rescan (scan_device)
+- add checkbox:
+    - use host driver (cubase, audiopluginhost,... host of vst plugin)
 
 Les backends de calcul  ne sont plus dans le cœur : ce sont des modules. Visibilité `hidden` + API marquée `ODENISE_API`.
 Le header public est `engine.h` (namespace `odenise`).

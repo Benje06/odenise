@@ -65,7 +65,10 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_CUDA_ARCHITECTURES": "61;75;86;89;90",
         "CMAKE_CUDA_COMPILER": "D:/nvidia/bin/nvcc.exe",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ODENISE_BUILD_PLUGIN": "ON",
+        "ODENISE_BUILD_MODULES": "ON",
+        "ODENISE_BUILD_TESTS": "ON"
       },
       "vendor": {
         "note": "Generateur Visual Studio 17 2022 + toolset v143 : combinaison officiellement supportee par CUDA 12.9. MSBuild gere CUDA proprement (pas le bug -Fd,-FS de Ninja+nvcc). Multi-config : build en --config Release. Supprimer build/ apres changement de generateur."

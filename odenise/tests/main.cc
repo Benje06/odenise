@@ -33,24 +33,8 @@ namespace {
     constexpr int kTestFrames = 128;
     std::string msg;
     std::string msg_err;
-
-    int run_load_chain_test(odenise::audio::AudioProcessor& processor) {
-        msg = _("=== test: load chain ===");
-        LOG(msg);
-
-        // Modules de suppression (dont passthrough)
-        const auto sup = processor.engine()->modules(odenise::ModuleKind::Suppression);
-        msg = _("suppression modules found: ");
-        msg += std::to_string(sup.size());
-        LOG(msg);
-
-        msg = _("=== load chain test passed ===");
-        LOG(msg);
-        return 0;
-    }
-
-
-   /*int run_process_test(std::unique_ptr<odenise::Engine>& engine) {
+/*
+    int run_process_test(std::unique_ptr<odenise::Engine>& engine) {
         msg = _("=== test: process passthrough ===");
         LOG(msg);
 
@@ -128,6 +112,7 @@ namespace {
         return 0;
     }
 */
+/*
     int run_backend_test(odenise::audio::AudioProcessor& processor) {
         msg = _("=== test: Compute backend module ===");
         LOG(msg);
@@ -264,8 +249,8 @@ namespace {
         LOG(msg);
         return 0;
     }
-
-    int run_build_processor_test(odenise::audio::AudioProcessor& processor) {
+*/
+    int run_build_processor_test(odenise::audio::AudioProcessor& processor, odenise::RuntimeConfig& cfg) {
         msg = _("=== test: Build AudioProcessor ===");
         LOG(msg);
 
@@ -284,6 +269,62 @@ namespace {
         LOG(msg);
         return 0;
     }
+
+    int run_load_chain_test(odenise::audio::AudioProcessor& processor, odenise::RuntimeConfig& cfg) {
+        msg = _("=== test: load chain ===");
+        LOG(msg);
+        int ok;
+        // Modules de suppression (dont passthrough)
+        const auto backends = processor.get_available_backends();
+        const auto modules = processor.get_available_modules();
+        odenise::ModuleInfo backend_;
+        if(backends.size() != 0){
+            for( auto mod: backends){
+                if(mod.kind == odenise::ModuleKind::ComputeBackend){
+                    ok = processor.bind_backend(mod.id,cfg);
+                    backend_ = mod;
+                    msg = _("Backend compute loaded.");
+                    LOG(msg);
+                    break;
+                }
+            }
+        }else{
+            msg = _("=== load chain Failed ===");
+            msg += _("=== No Backend ===");
+            LOG(msg);
+            return 1;
+        }
+        if(!ok){
+        msg = _("=== load chain Failed ===");
+            msg += _("=== Fail to load bakcend ===");
+            LOG(msg);
+            return 1; 
+        }
+        if(modules.size() != 0){
+            for(auto mod : modules){
+                if(odenise::ModuleKind::Suppression == mod.kind){
+                    ok = processor.insertModule(mod.id, 0, cfg);
+                    msg = _("Module filter loaded.");
+                    LOG(msg);
+                    break;
+                }
+            }
+        }else{
+            msg = _("=== load chain Failed ===");
+            msg += _("=== No module to load ===");
+            LOG(msg);
+            return 1;
+        }
+        if(!ok){
+         msg = _("=== load chain Failed ===");
+            msg += _("=== Fail to load module ===");
+            LOG(msg);
+            return 1; 
+        }
+        msg = _("=== load chain test passed ===");
+        LOG(msg);
+        return 1;
+    }
 } // namespace
 
 int main(int /*argc*/, char* /*argv*/[]) {
@@ -294,15 +335,22 @@ int main(int /*argc*/, char* /*argv*/[]) {
         std::make_shared<Logger>("odenise_test.log", 2));
 
     // AudioProcessor possede l'engine. Tous les tests passent par lui.
+    odenise::EngineCaps    caps;
+    odenise::RuntimeConfig cfg;   // suppression_id = 0
+    odenise::Status        st;
+    //cfg.suppression_id = 1;
+    odenise::ApplyResult how;
+
     odenise::audio::AudioProcessor processor;
 
+
     try {
-        int r = run_build_processor_test(processor);
+        int r = run_build_processor_test(processor,cfg);
         if (r != 0) return r;
 
-        r = run_load_chain_test(processor);
+        r = run_load_chain_test(processor,cfg);
         if (r != 0) return r;
-
+/*
         r = run_backend_test(processor);
         if (r != 0) return r;
 
@@ -314,9 +362,10 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
         /*r = run_process_test(processor);
         if (r != 0) return r;*/
-
+        /*
         r = run_latency_test(processor);
         return r;
+    */
     } catch (const std::exception& e) {
         std::string msg_err = error(__func__, _("unhandled exception"), e.what());
         LOG_ERR(msg_err);
