@@ -185,7 +185,7 @@ public:
             bindModule(cfg_.backend_id);
         }
 
-        if (backend_)
+        if(backend_)
             backend_->reconfigure(caps_, cfg_);
 
         return Status::Ok;
@@ -284,10 +284,14 @@ private:
     //  Gestion du backend
     // -----------------------------------------------------------------------
     void pause_backend() const{
-        backend_->pause();
+        if(backend_){
+            backend_->pause();
+        }
     };
     void restart_backend() const{
-        backend_->restart();
+        if(backend_){        
+            backend_->restart();
+        }
     };
     void releaseBackend() {
         if (backend_) {

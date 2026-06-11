@@ -171,6 +171,7 @@ bool ModuleRegistry::probe_file(const std::filesystem::path& file) {
         return false;
     }
 
+    //info->id = available_.size();
     // Metadonnees lues -- destruction du probe et fermeture de la lib.
     AvailableModule am;
     am.info = toModuleInfo(*info, kind);
@@ -204,10 +205,14 @@ int ModuleRegistry::scan_modules(const std::filesystem::path& dir) {
     }
 
     int found = 0;
+    std::string msg;
     for (const auto& e : std::filesystem::recursive_directory_iterator(dir, ec)) {
         if (ec) break;
         if (!e.is_regular_file()) continue;
         if (e.path().extension() != kModuleExt) continue;
+        msg = _("Scanning Module: ");
+        msg += e.path().string();
+        LOG(msg);
         if (probe_file(e.path())) ++found;
     }
     return found;

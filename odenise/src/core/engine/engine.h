@@ -592,6 +592,8 @@ public:
     virtual Spectrum spectrum() const = 0;
     virtual void pause_backend() const = 0;
     virtual void restart_backend() const = 0;
+    virtual int bindBackend(size_t available_id) = 0;
+    virtual int bindModule(size_t available_id) = 0;
 };
 
 // ---------------------------------------------------------------------------

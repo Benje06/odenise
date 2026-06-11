@@ -41,7 +41,8 @@ target_include_directories(passthrough PRIVATE
     ${ODENISE_CORE_ENGINE}
     ${ODENISE_CORE_INTERNAL})
 
-target_link_libraries(passthrough PRIVATE odenise_log odenise_chain odenise_thread)
+target_link_libraries(passthrough PRIVATE odenise_core)
+# odenise_log odenise_chain odenise_thread
 target_compile_features(passthrough PRIVATE cxx_std_20)
 
 if(MSVC)
@@ -68,7 +69,8 @@ target_include_directories(backend_cpu PRIVATE
     ${ODENISE_CORE_ENGINE}
     ${ODENISE_CORE_INTERNAL})
 
-target_link_libraries(backend_cpu PRIVATE odenise_log odenise_chain odenise_thread)
+target_link_libraries(backend_cpu PRIVATE odenise_core)
+#odenise_log odenise_chain odenise_thread
 target_compile_features(backend_cpu PRIVATE cxx_std_20)
 
 if(MSVC)

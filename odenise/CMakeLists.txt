@@ -75,12 +75,26 @@ set(ODENISE_DATA_OUTPUT_DIR    ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/${OD
 set(ODENISE_DATA_INSTALL_DIR   ${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/data/$<0:>)
 
 # ---------------------------------------------------------------------------
-#  Options du projet
+#  Options du projet ne fonctionne pas avec preset
 # ---------------------------------------------------------------------------
 option(ODENISE_WITH_CUDA      "Compile le backend CUDA" ON)
 option(ODENISE_BUILD_PLUGIN   "Compile le frontal JUCE (VST3/CLAP)" ON)
 option(ODENISE_BUILD_MODULES  "Compile les modules dynamiques" ON)
 option(ODENISE_BUILD_TESTS    "Compile le harnais de test" ON)
+
+# ---------------------------------------------------------------------------
+#  Sous-repertoires
+#  Ordre : libs utilitaires d'abord (odenise_log, odenise_chain, odenise_thread),
+#  puis le coeur (odenise_core) qui les consomme,
+#  puis les modules et les tests.
+# ---------------------------------------------------------------------------
+add_subdirectory(lib/audio)
+add_subdirectory(lib/log)
+add_subdirectory(lib/chain)
+add_subdirectory(lib/thread)
+add_subdirectory(src/core)
+# AudioProcessor instanciate engine
+
 
 # ---------------------------------------------------------------------------
 #  Detection CUDA (optionnelle)
@@ -106,6 +120,19 @@ else()
     endif()
 endif()
 
+if(ODENISE_BUILD_MODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/CMakeLists.txt")
+    add_subdirectory(src/modules)
+endif()
+
+if(ODENISE_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+    enable_testing()
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CTestCustom.cmake.in"
+        "${CMAKE_BINARY_DIR}/CTestCustom.cmake"
+        @ONLY)
+    add_subdirectory(tests)
+endif()
+
 # ---------------------------------------------------------------------------
 #  JUCE (si plugin demande et present)
 # ---------------------------------------------------------------------------
@@ -129,36 +156,12 @@ if(ODENISE_BUILD_PLUGIN AND CMAKE_BUILD_TYPE STREQUAL "Debug")
         ${juce_SOURCE_DIR}/extras/AudioPluginHost
         ${CMAKE_BINARY_DIR}/AudioPluginHost)
 endif()
-# ---------------------------------------------------------------------------
-#  Sous-repertoires
-#  Ordre : libs utilitaires d'abord (odenise_log, odenise_chain, odenise_thread),
-#  puis le coeur (odenise_core) qui les consomme,
-#  puis les modules et les tests.
-# ---------------------------------------------------------------------------
-add_subdirectory(lib/log)
-add_subdirectory(lib/chain)
-add_subdirectory(lib/thread)
-#add_subdirectory(lib/audio)
-add_subdirectory(src/core)
-
-if(ODENISE_BUILD_MODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/modules/CMakeLists.txt")
-    add_subdirectory(src/modules)
-endif()
 
 if(ODENISE_PLUGIN_READY)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/ui_shared/CMakeLists.txt")
         add_subdirectory(src/ui_shared)
     endif()
     add_subdirectory(src/plugin/juce)
-endif()
-
-if(ODENISE_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
-    enable_testing()
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CTestCustom.cmake.in"
-        "${CMAKE_BINARY_DIR}/CTestCustom.cmake"
-        @ONLY)
-    add_subdirectory(tests)
 endif()
 
 # ---------------------------------------------------------------------------

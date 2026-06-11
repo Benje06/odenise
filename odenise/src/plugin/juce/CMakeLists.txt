@@ -72,10 +72,14 @@ target_compile_definitions(odenise_plugin
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_MODAL_LOOPS_PERMITTED=0
-        JUCE_DEBUG
     PRIVATE
-        AUDIO_EXPORTS
+        JUCE_DEBUG
+        ${DEBUG_TOOL}
 )
+#LOGGER_IMPORTS
+#CHAIN_IMPORTS
+#THREAD_IMPORTS
+#AUDIO_IMPORTS
 
 target_link_libraries(odenise_plugin
     PRIVATE
@@ -88,6 +92,8 @@ target_link_libraries(odenise_plugin
     PUBLIC
         juce::juce_recommended_lto_flags
 )
+
+#odenise_audio odenise_chain odenise_log odenise_thread
 
 # ---------------------------------------------------------------------------
 #  Includes
@@ -105,8 +111,8 @@ target_include_directories(odenise_plugin
         ${CMAKE_SOURCE_DIR}/src/core
         ${CMAKE_SOURCE_DIR}/src/core/tools
         ${CMAKE_SOURCE_DIR}/src/core/engine
-        ${CMAKE_SOURCE_DIR}/src/core/audio
         ${CMAKE_SOURCE_DIR}/src/core/chain
+        ${CMAKE_SOURCE_DIR}/src/core/audio
 )
 
 # ---------------------------------------------------------------------------
@@ -118,8 +124,10 @@ target_compile_options(odenise_plugin PRIVATE
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra>
     >
 )
-
+message(STATUS "VST3 dir = $<TARGET_FILE_DIR:odenise_plugin_VST3>")
 add_custom_command(TARGET odenise_plugin POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:odenise_plugin_VST3>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:odenise_core>
         $<TARGET_FILE:odenise_log>

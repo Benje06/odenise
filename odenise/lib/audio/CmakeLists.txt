@@ -24,7 +24,6 @@ target_include_directories(odenise_audio
     PRIVATE
         ${CMAKE_SOURCE_DIR}/src/core/tools
         ${CMAKE_SOURCE_DIR}/src/core/chain
-        ${CMAKE_SOURCE_DIR}/src/core/engine
 )
 
 target_compile_features(odenise_audio PUBLIC cxx_std_20)

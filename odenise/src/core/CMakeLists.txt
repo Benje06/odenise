@@ -37,24 +37,30 @@ set_target_properties(odenise_core PROPERTIES
 # ---------------------------------------------------------------------------
 target_include_directories(odenise_core
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/engine>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/core/engine>
         $<INSTALL_INTERFACE:include/${ODENISE_VERSION_DIR}>
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/audio
-        ${CMAKE_CURRENT_SOURCE_DIR}/chain
-        ${CMAKE_CURRENT_SOURCE_DIR}/tools
-        ${CMAKE_CURRENT_SOURCE_DIR}/registry)
+        ${CMAKE_SOURCE_DIR}/src/core
+        ${CMAKE_SOURCE_DIR}/src/core/tools
+        ${CMAKE_SOURCE_DIR}/src/core/registry
+        ${CMAKE_SOURCE_DIR}/src/core/chain
+        ${CMAKE_SOURCE_DIR}/src/core/audio
+)
 
 target_compile_features(odenise_core PUBLIC cxx_std_20)
 target_compile_definitions(odenise_core PRIVATE
     ODENISE_BUILD_LIBRARY=1
     ODENISE_VERSION_DIR="${ODENISE_VERSION_DIR}"
-    LOGGER_EXPORTS=1
-    CHAIN_EXPORTS=1
-    AUDIO_EXPORTS=1
-    DEBUG_TOOL=1
+    ${DEBUG_TOOL}
+    LOGGER_EXPORTS
+    CHAIN_EXPORTS
+    AUDIO_EXPORTS
 )
+#AUDIO_IMPORTS
+#LOGGER_IMPORTS
+#CHAIN_IMPORTS
+#THREAD_IMPORTS
+
 
 # libdl sous Linux
 if(UNIX AND NOT APPLE)
@@ -63,7 +69,8 @@ endif()
 
 # Libs utilitaires partagees : LogManager singleton et AudioChain, gxthread.
 # PUBLIC : transitent vers les consommateurs de odenise_core (tests, plugin).
-target_link_libraries(odenise_core PUBLIC odenise_log odenise_chain odenise_thread)
+target_link_libraries(odenise_core PUBLIC odenise_log odenise_thread odenise_chain)
+#  
 
 # Avertissements stricts, C++ uniquement (pas vers nvcc)
 if(MSVC)

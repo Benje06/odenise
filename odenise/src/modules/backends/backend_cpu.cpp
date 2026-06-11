@@ -41,7 +41,7 @@ void* CpuBackendContext::scratch_buf(std::size_t /*bytes*/) noexcept {
 // [RT/CTRL] Pas de stream CPU.
 void* CpuBackendContext::compute_stream() noexcept { return nullptr; }
 
-// [CTRL] Type de backend : CPU.
+// [CTRL] Type de backend : CPU. TO BE DEFINE IN BACKENDBASE
 int CpuBackendContext::backend_type() const noexcept { return odenise::kBackendCPU; }
 
 // [CTRL] Redimensionne le scratch buffer (appele par reconfigure).
@@ -70,6 +70,7 @@ CpuBackendImpl::~CpuBackendImpl() {
     R_Thread();
     //T_Thread2();
     T_Thread();
+
 }
 
 // -----------------------------------------------------------------------
@@ -189,6 +190,7 @@ const OdeniseTestResultC* CpuBackendImpl::self_test_c() const noexcept {
 // -----------------------------------------------------------------------
 odenise::Status CpuBackendImpl::reconfigure(const odenise::EngineCaps&    e_caps,
                                             const odenise::RuntimeConfig& cfg) {
+    LOG(LOG_IN());
     P_Thread();
     P_Thread2();
 
@@ -198,6 +200,7 @@ odenise::Status CpuBackendImpl::reconfigure(const odenise::EngineCaps&    e_caps
 
     R_Thread2();
     R_Thread();
+    LOG(LOG_OUT());
     return odenise::Status::Ok;
 }
 
@@ -251,9 +254,11 @@ odenise::Status CpuBackendImpl::process(const float* const* in,
 //  setAudioIO
 // -----------------------------------------------------------------------
 void CpuBackendImpl::setAudioIO(odenise::TrackIO io) {
+    LOG(LOG_IN());
     P_Thread();
     io_ = io;
     R_Thread();
+    LOG(LOG_OUT());
 }
 
 // -----------------------------------------------------------------------
