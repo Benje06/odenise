@@ -10,12 +10,13 @@ namespace odenise::audio {
 // ----------------------------------------------------------------------------
 AudioEditor::AudioEditor(AudioProcessor* processor)
     : processor_(processor)
-    , engine_(processor ? processor->engine() : nullptr) {}
+    , engine_(processor ? processor->engine() : nullptr)
+    , cfg_(processor->get_config()) {}
 
 // ----------------------------------------------------------------------------
 AudioEditor::~AudioEditor() {}
 
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 //  Drivers audio
 // ----------------------------------------------------------------------------
 
@@ -167,13 +168,22 @@ bool AudioEditor::selectOutputChannel(int channel) {
 // ----------------------------------------------------------------------------
 //  Backend
 // ----------------------------------------------------------------------------
+void AudioEditor::get_backends(){
+    backends_ = std::move(engine_->modules(odenise::ModuleKind::ComputeBackend));
+};
+const  std::vector<odenise::ModuleInfo>& AudioEditor::backends() const noexcept{
+    return backends_;
+};
 
-bool AudioEditor::selectBackend(size_t available_id) {
+bool AudioEditor::selectBackend(size_t bcknd_combo_id){
     if (!engine_) return false;
-    selected_backend_id_ = available_id;
+
+    selected_backend_id_ = bcknd_combo_id;
+    processor_->bind_backend(bcknd_combo_id,*cfg_);
     std::string msg = _("AudioEditor: selected backend available_id=");
-    msg += std::to_string(available_id);
+    msg += std::to_string(bcknd_combo_id);
     LOG(msg);
+
     return true;
 }
 
@@ -181,10 +191,19 @@ bool AudioEditor::selectBackend(size_t available_id) {
 //  Module
 // ----------------------------------------------------------------------------
 
-bool AudioEditor::selectModule(size_t available_id, const RuntimeConfig& cfg) {
-    const bool ok = insertModule(available_id, 0, cfg);
-    if (ok) selected_module_id_ = available_id;
-    return ok;
+void AudioEditor::get_modules(){
+    modules_ = std::move(engine_->modules());
+};
+const  std::vector<odenise::ModuleInfo>& AudioEditor::modules() const noexcept{
+    return modules_;
+};
+
+bool AudioEditor::selectModule(int mods_combo_id, const RuntimeConfig& cfg){
+    if (insertModule(mods_combo_id, 0, cfg)){
+        selected_module_id_ = mods_combo_id;
+    } 
+    // TODO: return insertmoduel return
+    return true;
 }
 
 // ----------------------------------------------------------------------------

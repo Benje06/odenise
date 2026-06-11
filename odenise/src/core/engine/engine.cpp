@@ -372,21 +372,21 @@ private:
         module_id_ = 0;
     }
 
-    void bindModule(size_t available_id) {
+    int bindModule(size_t available_id) {
         if (!backend_) {
             LOG(_("engine: Cannot load module without backend"));
-            return;
+            return 0;
         }
         if (available_id == 65535) {
             LOG(_("engine: no module requested (id=65535)"));
-            return;
+            return 0;
         }
         auto asked_module=registry_.get_available_module_info(available_id);
         if( asked_module.kind == ModuleKind::ComputeBackend ){
             std::string msg = _("engine: cannot load ComputeBackend as module, requested id=");
             msg += std::to_string(available_id);
             LOG(msg);
-            return;
+            return 0;
         }
         size_t loaded_id;
         loaded_id = registry_.get_last_loaded_id() + 1;
@@ -394,7 +394,7 @@ private:
             std::string msg = _("engine: cannot load module id=");
             msg += std::to_string(available_id);
             LOG(msg);
-            return;
+            return 0;
         }       
         module_ = registry_.find_module(loaded_id);
         if (!module_) {
@@ -404,7 +404,7 @@ private:
             msg += std::to_string(loaded_id);
             LOG(msg);
             registry_.unload_module(loaded_id);
-            return;
+            return 0;
         }
         module_id_ = loaded_id;
 
@@ -416,7 +416,7 @@ private:
             registry_.unload_module(loaded_id);
             module_    = nullptr;
             module_id_ = 0;
-            return;
+            return 0;
         }
 
         std::string msg = _("engine: bound module id=");
@@ -424,6 +424,7 @@ private:
         msg += _(" name=");
         msg += module_->info_c()->name;
         LOG(msg);
+        return 1;
     }
 
     // -----------------------------------------------------------------------

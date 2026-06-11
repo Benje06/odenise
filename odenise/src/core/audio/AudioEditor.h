@@ -137,13 +137,18 @@ public:
     // -----------------------------------------------------------------------
     //  Backend -- selectionne depuis registry.available_.
     // -----------------------------------------------------------------------
-    AUDIO bool   selectBackend(size_t available_id);
+    AUDIO void   get_backends();
+    AUDIO const  std::vector<odenise::ModuleInfo>& backends() const noexcept;
+
+    AUDIO bool   selectBackend(size_t bcknd_combo_id);
     AUDIO size_t selectedBackendId() const noexcept { return selected_backend_id_; }
 
     // -----------------------------------------------------------------------
     //  Module -- selectionne depuis registry.available_.
     // -----------------------------------------------------------------------
-    AUDIO bool   selectModule(size_t available_id, const RuntimeConfig& cfg);
+    AUDIO void   get_modules();
+    AUDIO const  std::vector<odenise::ModuleInfo>& modules() const noexcept;
+    AUDIO bool   selectModule(int mods_combo_id, const RuntimeConfig& cfg);
     AUDIO size_t selectedModuleId() const noexcept { return selected_module_id_; }
 
     // -----------------------------------------------------------------------
@@ -169,7 +174,10 @@ public:
 private:
     AudioProcessor* processor_;
     Engine*         engine_;
+    RuntimeConfig*  cfg_;
 
+    std::vector<ModuleInfo>         backends_;
+    std::vector<ModuleInfo>         modules_;
     std::vector<AudioDriver>        drivers_;
     std::vector<AudioInterfaceInfo> inputs_;
     std::vector<AudioInterfaceInfo> outputs_;

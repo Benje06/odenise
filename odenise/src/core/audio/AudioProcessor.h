@@ -103,10 +103,18 @@ public:
     // cfg peut etre une sous-classe de RuntimeConfig (cast dans le module).
     AUDIO bool reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg);
 
+    // charge le backend selectionne
+    AUDIO bool bind_backend(size_t available_id, const RuntimeConfig& cfg);
+
+    // récupere la liste des backend et des modules dispo
+    AUDIO std::vector<odenise::ModuleInfo> get_available_backends();
+    AUDIO std::vector<odenise::ModuleInfo> get_available_modules();
+
     // -----------------------------------------------------------------------
     //  Acces a l'engine (pour AudioEditor)
     // -----------------------------------------------------------------------
     Engine* engine() const noexcept { return engine_.get(); }
+    RuntimeConfig* get_config() noexcept { return &cfg_; }
 
 private:
     std::unique_ptr<Engine> engine_;

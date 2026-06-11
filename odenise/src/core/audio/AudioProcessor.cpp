@@ -69,9 +69,16 @@ void AudioProcessor::release() {
     // La suspension du backend est geree en interne par celui-ci lors des
     // operations qui le necessitent (setAudioIO, reconfigure...).
     // Aucun appel explicite de release() requis sur l'engine.
-    //engine_->pause_backend();
+    engine_->pause_backend();
     std::string msg = _("AudioProcessor: released");
     LOG(msg);
+}
+
+
+// charge le backend selectionne
+bool AudioProcessor::bind_backend(size_t available_id, const RuntimeConfig& cfg){
+    if (!engine_) return false;
+    return engine_->bindBackend(available_id);;
 }
 
 // ----------------------------------------------------------------------------
@@ -81,9 +88,7 @@ void AudioProcessor::release() {
 bool AudioProcessor::insertModule(size_t available_id, size_t position,
                                   const RuntimeConfig& cfg) {
     if (!engine_) return false;
-    // TODO : engine_->insertModule(available_id, position, cfg)
-    (void)available_id; (void)position; (void)cfg;
-    return true;
+    return engine_->bindModule(available_id);
 }
 
 bool AudioProcessor::replaceModule(size_t available_id, size_t position,
@@ -107,6 +112,13 @@ bool AudioProcessor::reconfigureModule(size_t loaded_id, const RuntimeConfig& cf
     // -> module->reconfigure(cfg) avec cast vers config concrete dans le module
     (void)loaded_id; (void)cfg;
     return true;
+}
+
+std::vector<odenise::ModuleInfo> AudioProcessor::get_available_backends(){
+    return engine_->modules(odenise::ModuleKind::ComputeBackend);
+}
+std::vector<odenise::ModuleInfo> AudioProcessor::get_available_modules(){
+    return engine_->modules();
 }
 
 } // namespace odenise::audio

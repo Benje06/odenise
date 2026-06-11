@@ -425,7 +425,7 @@ namespace odenise::plugin {
             if (idx < 0) return;
             const auto& list = editor->backends();
             if (idx >= static_cast<int>(list.size())) return;
-            const int id = list[static_cast<size_t>(idx)].id;
+            const size_t id = list[static_cast<size_t>(idx)].id;
             editor->selectBackend(id);
             editor->get_modules();
             populateComboModules();
