@@ -10,36 +10,13 @@
 #include "module_registry.h"
 #include "audio_chain.h"
 
-namespace odenise {
-
-std::filesystem::path exeDir() {
-#if defined(_WIN32)
-    char buf[MAX_PATH] = {};
-    GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    return std::filesystem::path(buf).parent_path();
-#else
-    std::error_code ec;
-    auto p = std::filesystem::read_symlink("/proc/self/exe", ec);
-    if (!ec) return p.parent_path();
-    return std::filesystem::current_path();
-#endif
-}
-
 std::filesystem::path moduleDir() {
-#if defined(_WIN32)
-    char*  buf = nullptr;
-    size_t len = 0;
-    if (_dupenv_s(&buf, &len, "ODENISE_MODULE_PATH") == 0 && buf) {
-        std::filesystem::path p = buf;
-        std::free(buf);
-        return p;
-    }
-#else
-    if (const char* e = std::getenv("ODENISE_MODULE_PATH"))
-        return e;
-#endif
-    return exeDir() / ".." / "share" / ODENISE_VERSION_DIR / "modules";
+    std::string str = ODENISE_MODULE_INSTALL_DIR;
+    std::filesystem::path p(str);
+    return p;
 }
+
+namespace odenise {
 
 BackendCaps toBackendCaps(const OdeniseBackendCapsC& b_caps) {
     BackendCaps bc;

@@ -27,7 +27,12 @@
     void* dl_open(const char* path)          { return (void*)LoadLibraryA(path); }
     void* dl_sym (void* h, const char* name) { return (void*)GetProcAddress((HMODULE)h, name); }
     void  dl_close(void* h)                  { if (h) FreeLibrary((HMODULE)h); }
-    std::string dl_error()                   { return "LoadLibrary/GetProcAddress error"; }
+    std::string dl_error() {
+        DWORD err = GetLastError();
+        char buf[256] = {};
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, nullptr, err, 0, buf, sizeof(buf), nullptr);
+        return std::string("err=") + std::to_string(err) + " " + buf;
+    }
     constexpr const char* kModuleExt = ".dll";
 #else
   #include <dlfcn.h>

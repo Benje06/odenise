@@ -12,6 +12,7 @@ project(odenise
 if(POLICY CMP0141)
     cmake_policy(SET CMP0141 NEW)
 endif()
+cmake_policy(SET CMP0177 NEW)
 
 # ---------------------------------------------------------------------------
 #  Standard et reglages globaux
@@ -55,25 +56,6 @@ if(MSVC)
     set(CMAKE_CONFIGURATION_TYPES Debug Release RelWithDebInfo MinSizeRel CACHE STRING "" FORCE)
 endif()
 
-# Layout de build : meme arbre que le prefix, sous le builddir.
-# GNUInstallDirs fournit les noms relatifs (bin, lib, share, include).
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}/$<0:>)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/$<0:>)
-
-if(WIN32)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}/$<0:>)
-else()
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/$<0:>)
-endif()
-
-# Modules dynamiques : share/odenise/<version>/modules/
-set(ODENISE_MODULE_OUTPUT_DIR  ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/modules/$<0:>)
-set(ODENISE_MODULE_INSTALL_DIR ${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/modules/$<0:>)
-
-# Donnees applicatives : share/odenise/<version>/data/
-set(ODENISE_DATA_OUTPUT_DIR    ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/data/$<0:>)
-set(ODENISE_DATA_INSTALL_DIR   ${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/data/$<0:>)
-
 # ---------------------------------------------------------------------------
 #  Options du projet ne fonctionne pas avec preset
 # ---------------------------------------------------------------------------
@@ -81,6 +63,29 @@ option(ODENISE_WITH_CUDA      "Compile le backend CUDA" ON)
 option(ODENISE_BUILD_PLUGIN   "Compile le frontal JUCE (VST3/CLAP)" ON)
 option(ODENISE_BUILD_MODULES  "Compile les modules dynamiques" ON)
 option(ODENISE_BUILD_TESTS    "Compile le harnais de test" ON)
+
+
+if(ODENISE_BUILD_PLUGIN)
+    set(ODENISE_MODULE_INSTALL_DIR "D:/crosscompile/msys2/home/jerome/odenise/odenise/build/windows-msvc-cuda/AudioPluginHost/AudioPluginHost_artefacts/Debug")
+else()
+    set(ODENISE_MODULE_INSTALL_DIR ${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/modules/$<0:>)
+endif()
+
+# Modules dynamiques : share/odenise/<version>/modules/
+set(ODENISE_MODULE_OUTPUT_DIR  ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/modules/$<0:>)
+
+# Donnees applicatives : share/odenise/<version>/data/
+set(ODENISE_DATA_OUTPUT_DIR    ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/data/$<0:>)
+set(ODENISE_DATA_INSTALL_DIR   ${CMAKE_INSTALL_DATADIR}/${ODENISE_VERSION_DIR}/data/$<0:>)
+
+# Layout de build : meme arbre que le prefix, sous le builddir.
+# GNUInstallDirs fournit les noms relatifs (bin, lib, share, include).
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}/$<0:>)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/$<0:>)
+
+if(WIN32)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}/$<0:>)
+endif()
 
 # ---------------------------------------------------------------------------
 #  Sous-repertoires
@@ -94,7 +99,6 @@ add_subdirectory(lib/chain)
 add_subdirectory(lib/thread)
 add_subdirectory(src/core)
 # AudioProcessor instanciate engine
-
 
 # ---------------------------------------------------------------------------
 #  Detection CUDA (optionnelle)
@@ -136,6 +140,7 @@ endif()
 # ---------------------------------------------------------------------------
 #  JUCE (si plugin demande et present)
 # ---------------------------------------------------------------------------
+
 if(ODENISE_BUILD_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/juce/CMakeLists.txt")
     include(FetchContent)
     set(JUCE_TAG "8.0.13" CACHE STRING "Tag JUCE")
@@ -173,6 +178,6 @@ message(STATUS "   CUDA backend   : ${ODENISE_HAVE_CUDA}")
 message(STATUS "   Plugin (JUCE)  : ${ODENISE_PLUGIN_READY}")
 message(STATUS "   Modules        : ${ODENISE_BUILD_MODULES}")
 message(STATUS "   Tests          : ${ODENISE_BUILD_TESTS}")
-message(STATUS "   Module dir     : ${ODENISE_MODULE_OUTPUT_DIR}")
+message(STATUS "   ODENISE_MODULE_INSTALL_DIR     : ${ODENISE_MODULE_INSTALL_DIR}")
 message(STATUS "   DEBUG          : ${DEBUG_TOOL}")
 message(STATUS "---------------------------------------------------------")

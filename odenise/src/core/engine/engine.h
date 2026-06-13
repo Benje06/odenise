@@ -41,6 +41,7 @@
   #define ODENISE_API    __attribute__((visibility("default")))
   #define ODENISE_EXPORT __attribute__((visibility("default")))
 #endif
+#define MOD_PATH ODENISE_MODULE_INSTALL_DIR
 
 //  STRUCTS POD FRONTIERE INTER-COMPILATEURS
 //

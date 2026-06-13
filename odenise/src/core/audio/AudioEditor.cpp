@@ -51,14 +51,15 @@ bool AudioEditor::selectDriver(int id) {
 
 // ----------------------------------------------------------------------------
 //  Interfaces d'entree
+//  TODO: update cfg_
 // ----------------------------------------------------------------------------
-
-void AudioEditor::setAudioInputs(std::vector<AudioInterfaceInfo> inputs) {
-    inputs_ = std::move(inputs);
-}
 
 const std::vector<AudioInterfaceInfo>& AudioEditor::audioInputs() const noexcept {
     return inputs_;
+}
+
+void AudioEditor::setAudioInputs(std::vector<AudioInterfaceInfo> inputs) {
+    inputs_ = std::move(inputs);
 }
 
 bool AudioEditor::updateAudioInput(int id, const AudioInterfaceInfo& info) {
@@ -114,11 +115,9 @@ bool AudioEditor::selectInputChannel(int channel) {
 void AudioEditor::setAudioOutputs(std::vector<AudioInterfaceInfo> outputs) {
     outputs_ = std::move(outputs);
 }
-
 const std::vector<AudioInterfaceInfo>& AudioEditor::audioOutputs() const noexcept {
     return outputs_;
 }
-
 bool AudioEditor::updateAudioOutput(int id, const AudioInterfaceInfo& info) {
     for (auto& iface : outputs_) {
         if (iface.id == id) {
@@ -132,7 +131,6 @@ bool AudioEditor::updateAudioOutput(int id, const AudioInterfaceInfo& info) {
     LOG_ERR(msg_err);
     return false;
 }
-
 bool AudioEditor::selectOutputInterface(int id) {
     for (const auto& iface : outputs_) {
         if (iface.id == id) {
@@ -147,7 +145,6 @@ bool AudioEditor::selectOutputInterface(int id) {
     LOG_ERR(msg_err);
     return false;
 }
-
 bool AudioEditor::selectOutputChannel(int channel) {
     for (const auto& iface : outputs_) {
         if (iface.id == selected_output_id_) {
@@ -174,12 +171,11 @@ void AudioEditor::get_backends(){
 const  std::vector<odenise::ModuleInfo>& AudioEditor::backends() const noexcept{
     return backends_;
 };
-
 bool AudioEditor::selectBackend(size_t bcknd_combo_id){
     if (!engine_) return false;
 
     selected_backend_id_ = bcknd_combo_id;
-    processor_->bind_backend(bcknd_combo_id,*cfg_);
+    processor_->bindBackend(bcknd_combo_id,*cfg_);
     std::string msg = _("AudioEditor: selected backend available_id=");
     msg += std::to_string(bcknd_combo_id);
     LOG(msg);
@@ -197,7 +193,6 @@ void AudioEditor::get_modules(){
 const  std::vector<odenise::ModuleInfo>& AudioEditor::modules() const noexcept{
     return modules_;
 };
-
 bool AudioEditor::selectModule(int mods_combo_id, const RuntimeConfig& cfg){
     if (insertModule(mods_combo_id, 0, cfg)){
         selected_module_id_ = mods_combo_id;
@@ -215,18 +210,15 @@ bool AudioEditor::insertModule(size_t available_id, size_t position,
     if (!processor_) return false;
     return processor_->insertModule(available_id, position, cfg);
 }
-
 bool AudioEditor::replaceModule(size_t available_id, size_t position,
                                 const RuntimeConfig& cfg) {
     if (!processor_) return false;
     return processor_->replaceModule(available_id, position, cfg);
 }
-
 void AudioEditor::removeModule(size_t position) {
     if (!processor_) return;
-    processor_->removeModule(position);
+    processor_->unBindModule(position);
 }
-
 bool AudioEditor::reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg) {
     if (!processor_) return false;
     return processor_->reconfigureModule(loaded_id, cfg);
@@ -239,11 +231,9 @@ bool AudioEditor::reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg) 
 const LatencyInfo& AudioEditor::latencyInfo() const noexcept {
     return cached_latency_;
 }
-
 const ProcessingStats& AudioEditor::processingStats() const noexcept {
     return cached_stats_;
 }
-
 BackendCaps AudioEditor::backendCaps() const {
     if (!engine_) return {};
     return engine_->backendCaps();

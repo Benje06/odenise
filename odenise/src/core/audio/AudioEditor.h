@@ -107,32 +107,27 @@ public:
     //  Interfaces audio d'entree -- interfaces ayant max_input_channels > 0.
     //  Fournies par la couche audio (JuceAudioLayer::scanDevices()).
     // -----------------------------------------------------------------------
-    AUDIO void setAudioInputs(std::vector<AudioInterfaceInfo> inputs);
     AUDIO const std::vector<AudioInterfaceInfo>& audioInputs() const noexcept;
-
+    
+    AUDIO void setAudioInputs(std::vector<AudioInterfaceInfo> inputs);
     // Met a jour les capacites d'une interface d'entree deja listee (id connu).
-    // Appele par JuceAudioLayer::probeDevice() apres selection dans le combo.
     AUDIO bool updateAudioInput (int id, const AudioInterfaceInfo& info);
-
     AUDIO bool selectInputInterface(int id);
+    AUDIO bool selectInputChannel(int channel);
     AUDIO int  selectedInputInterfaceId()  const noexcept { return selected_input_id_;  }
     AUDIO int  selectedInputChannel()      const noexcept { return selected_input_ch_;  }
-    AUDIO bool selectInputChannel(int channel);
 
     // -----------------------------------------------------------------------
     //  Interfaces audio de sortie -- interfaces ayant max_output_channels > 0.
     // -----------------------------------------------------------------------
-    AUDIO void setAudioOutputs(std::vector<AudioInterfaceInfo> outputs);
     AUDIO const std::vector<AudioInterfaceInfo>& audioOutputs() const noexcept;
-
+    AUDIO void setAudioOutputs(std::vector<AudioInterfaceInfo> outputs);
     // Met a jour les capacites d'une interface de sortie deja listee (id connu).
-    // Appele par JuceAudioLayer::probeDevice() apres selection dans le combo.
     AUDIO bool updateAudioOutput(int id, const AudioInterfaceInfo& info);
-
     AUDIO bool selectOutputInterface(int id);
+    AUDIO bool selectOutputChannel(int channel);
     AUDIO int  selectedOutputInterfaceId() const noexcept { return selected_output_id_; }
     AUDIO int  selectedOutputChannel()     const noexcept { return selected_output_ch_; }
-    AUDIO bool selectOutputChannel(int channel);
 
     // -----------------------------------------------------------------------
     //  Backend -- selectionne depuis registry.available_.

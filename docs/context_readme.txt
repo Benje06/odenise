@@ -12,7 +12,7 @@ s'aide des Librairies: gxthread (std::thread ou pthread), audio_chain (routeur i
 
                                                                            CPU -- GPU --------- \
                                                        module                \    /              \
-    UI <--------------------> AudioEditor ---\?    loader/registry    compute module dispatcher   |
+    UI <--------------------> AudioEditor ---\     loader/registry    compute module dispatcher   |
     |                              |          \          |                     \/                 |
     |                        AudioProcessor ---\->     engine     <->        backend     ->    modules
     |                              |  \-----------------???--------------------/\                 |

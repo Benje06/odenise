@@ -282,7 +282,8 @@ namespace odenise::plugin {
         addAndMakeVisible(label_out_info_);
 
         populateCombosDriver();
-        //populateComboBackends();
+
+        populateComboBackends();
         startTimerHz(10);
     }
 
@@ -491,11 +492,12 @@ namespace odenise::plugin {
     void JuceEditorComponent::populateComboBackends(){
         auto* editor = plugin_.layer()->editor();
         if (!editor) return;
-
+        editor->get_backends();
         combo_bcknd_.clear(juce::dontSendNotification);
         int jid = 1;
-        for (const auto& bcknd : editor->backends())
+        for (const auto& bcknd : editor->backends()){
             combo_bcknd_.addItem(bcknd.name, jid++);
+        }
     }
     
     // ----------------------------------------------------------------------------

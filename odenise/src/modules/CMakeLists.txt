@@ -46,11 +46,20 @@ target_link_libraries(passthrough PRIVATE odenise_core)
 target_compile_features(passthrough PRIVATE cxx_std_20)
 
 if(MSVC)
-    target_compile_options(passthrough PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4>)
+    target_compile_options(passthrough
+        PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:/W4>
+    )
 else()
-    target_compile_options(passthrough PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(passthrough
+        PRIVATE
+            -Wall -Wextra -Wpedantic
+        )
 endif()
-target_compile_definitions(passthrough PRIVATE ${DEBUG_TOOL})
+target_compile_definitions(passthrough
+    PRIVATE
+        ${DEBUG_TOOL}
+)
 
 install(TARGETS passthrough
         LIBRARY DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/suppression
@@ -74,15 +83,24 @@ target_link_libraries(backend_cpu PRIVATE odenise_core)
 target_compile_features(backend_cpu PRIVATE cxx_std_20)
 
 if(MSVC)
-    target_compile_options(backend_cpu PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4>)
+    target_compile_options(backend_cpu
+        PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:/W4>
+    )
 else()
-    target_compile_options(backend_cpu PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(backend_cpu
+        PRIVATE
+            -Wall -Wextra -Wpedantic
+    )
 endif()
-target_compile_definitions(backend_cpu PRIVATE ${DEBUG_TOOL})
-
+target_compile_definitions(backend_cpu 
+    PRIVATE
+        ${DEBUG_TOOL}
+)
 install(TARGETS backend_cpu
-        LIBRARY DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/backends
-        RUNTIME DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/backends)
+    LIBRARY DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/backends
+    RUNTIME DESTINATION ${ODENISE_MODULE_INSTALL_DIR}/backends
+)
 
 # --- Backend CUDA (calcul GPU) -----------------------------------------------
 # Compile uniquement quand un toolchain CUDA est present (preset
@@ -107,7 +125,11 @@ if(ODENISE_HAVE_CUDA)
 
     # /W4 conditionne au C++ uniquement (jamais transmis a nvcc).
     if(MSVC)
-        target_compile_options(backend_cuda PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4>)
+        target_compile_options(backend_cuda
+            PRIVATE
+                $<$<COMPILE_LANGUAGE:CXX>:/W4>
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4 -Wno-deprecated-gpu-targets>
+        )
     endif()
 
     install(TARGETS backend_cuda

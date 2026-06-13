@@ -281,7 +281,7 @@ namespace {
         if(backends.size() != 0){
             for( auto mod: backends){
                 if(mod.kind == odenise::ModuleKind::ComputeBackend){
-                    ok = processor.bind_backend(mod.id,cfg);
+                    ok = processor.bindBackend(mod.id,cfg);
                     backend_ = mod;
                     msg = _("Backend compute loaded.");
                     LOG(msg);

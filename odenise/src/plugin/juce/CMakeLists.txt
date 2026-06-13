@@ -46,6 +46,10 @@ juce_add_plugin(odenise_plugin
     COPY_PLUGIN_AFTER_BUILD FALSE
 )
 
+set(ODENISE_VST3_CONTENTS_DIR 
+    "$<TARGET_FILE_DIR:odenise_plugin_VST3>"
+)
+
 # ---------------------------------------------------------------------------
 #  Sources
 # ---------------------------------------------------------------------------
@@ -76,6 +80,7 @@ target_compile_definitions(odenise_plugin
         JUCE_DEBUG
         ${DEBUG_TOOL}
 )
+
 #LOGGER_IMPORTS
 #CHAIN_IMPORTS
 #THREAD_IMPORTS
@@ -92,7 +97,6 @@ target_link_libraries(odenise_plugin
     PUBLIC
         juce::juce_recommended_lto_flags
 )
-
 #odenise_audio odenise_chain odenise_log odenise_thread
 
 # ---------------------------------------------------------------------------
@@ -125,13 +129,28 @@ target_compile_options(odenise_plugin PRIVATE
     >
 )
 message(STATUS "VST3 dir = $<TARGET_FILE_DIR:odenise_plugin_VST3>")
+
 add_custom_command(TARGET odenise_plugin POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
         "$<TARGET_FILE_DIR:odenise_plugin_VST3>"
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:odenise_plugin_VST3>/modules/backends"
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:odenise_plugin_VST3>/modules/suppression"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:odenise_core>
         $<TARGET_FILE:odenise_log>
         $<TARGET_FILE:odenise_chain>
         $<TARGET_FILE:odenise_thread>
-        $<TARGET_FILE_DIR:odenise_plugin_VST3>
+        "$<TARGET_FILE_DIR:odenise_plugin_VST3>"
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "${ODENISE_MODULE_INSTALL_DIR}"   
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:odenise_core>
+        $<TARGET_FILE:odenise_log>
+        $<TARGET_FILE:odenise_chain>
+        $<TARGET_FILE:odenise_thread>
+        $<TARGET_FILE:passthrough>
+        $<TARGET_FILE:backend_cpu>
+        "${ODENISE_MODULE_INSTALL_DIR}"
 )

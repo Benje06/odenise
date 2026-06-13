@@ -64,7 +64,6 @@ public:
     // -----------------------------------------------------------------------
     //  Cycle de vie audio
     // -----------------------------------------------------------------------
-
     // [CTRL] Prepare la chaine (sample_rate, block_size).
     // Reconfigure l'engine et le backend.
     // TODO : Engine::reconfigure(EngineCaps, RuntimeConfig) a ajouter.
@@ -78,38 +77,37 @@ public:
     // TODO : Engine::release() a ajouter.
     AUDIO void release();
 
-    // -----------------------------------------------------------------------
-    //  Configuration de la chaine audio
-    //  Delegue a Engine -> BackendBase -> chaine (unique, tous kinds).
-    //
-    //  TODO : methodes Engine correspondantes a ajouter :
-    //    engine->insertModule(available_id, position, cfg)
-    //    engine->replaceModule(available_id, position, cfg)
-    //    engine->removeModule(position)
-    //    engine->reconfigureModule(loaded_id, cfg)
-    // -----------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
+    //  Gestion des modules
+    // ----------------------------------------------------------------------------
+    // charge le backend selectionne
+    AUDIO bool bindBackend(size_t available_id, const RuntimeConfig& cfg);
 
-    // Charge depuis available_ et insere a la position donnee.
-    // installModule = insertModule en derniere position.
-    AUDIO bool insertModule(size_t available_id, size_t position, const RuntimeConfig& cfg);
-
-    // Charge depuis available_ et remplace le module a la position donnee.
-    AUDIO bool replaceModule(size_t available_id, size_t position, const RuntimeConfig& cfg);
-
-    // Retire le module a la position donnee, le decharge de loaded_.
-    AUDIO void removeModule(size_t position);
+    AUDIO bool bindModule(size_t available_id);
+    AUDIO bool unBindModule(size_t position);
 
     // Reconfigure un module deja dans loaded_ par son loaded_id.
     // cfg peut etre une sous-classe de RuntimeConfig (cast dans le module).
     AUDIO bool reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg);
 
-    // charge le backend selectionne
-    AUDIO bool bind_backend(size_t available_id, const RuntimeConfig& cfg);
-
     // récupere la liste des backend et des modules dispo
     AUDIO std::vector<odenise::ModuleInfo> get_available_backends();
     AUDIO std::vector<odenise::ModuleInfo> get_available_modules();
 
+    
+    // -----------------------------------------------------------------------
+    //  Configuration de la chaine audio
+    //  Delegue a Engine -> BackendBase -> chaine (unique, tous kinds).
+    // -----------------------------------------------------------------------
+    // insertModule in audio chain.
+    AUDIO bool insertModule(size_t available_id, size_t position,
+                                const RuntimeConfig& cfg);
+    // replace module in audio chain
+    AUDIO bool replaceModule(size_t available_id, size_t position,
+                                const RuntimeConfig& cfg);
+    // remove module from audio chain
+    AUDIO bool removeModule(size_t available_id, size_t position,
+                                const RuntimeConfig& cfg);
     // -----------------------------------------------------------------------
     //  Acces a l'engine (pour AudioEditor)
     // -----------------------------------------------------------------------

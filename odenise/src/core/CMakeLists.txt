@@ -55,6 +55,7 @@ target_compile_definitions(odenise_core PRIVATE
     LOGGER_EXPORTS
     CHAIN_EXPORTS
     AUDIO_EXPORTS
+    "ODENISE_MODULE_INSTALL_DIR=\"${ODENISE_MODULE_INSTALL_DIR}\""
 )
 #AUDIO_IMPORTS
 #LOGGER_IMPORTS
@@ -74,10 +75,13 @@ target_link_libraries(odenise_core PUBLIC odenise_log odenise_thread odenise_cha
 
 # Avertissements stricts, C++ uniquement (pas vers nvcc)
 if(MSVC)
-    target_compile_options(odenise_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zi /DEBUG>)
+    target_compile_options(odenise_core
+        PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:/W4 /Zi /DEBUG>)
 else()
-    target_compile_options(odenise_core PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>)
+    target_compile_options(odenise_core
+        PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>)
 endif()
 
 # ---------------------------------------------------------------------------
