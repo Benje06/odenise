@@ -205,8 +205,9 @@ namespace odenise::plugin {
         , vu_in_ (1)
         , vu_out_(1)
     {
+        setResizable(true,true);
         setSize(kWidth, kHeight);
-        setResizeLimits(kWidth, kHeight, kWidth, kHeight);
+        //setResizeLimits(kWidth, kHeight, kWidth, kHeight);
 
         addAndMakeVisible(vu_in_);
         addAndMakeVisible(vu_out_);
@@ -272,17 +273,29 @@ namespace odenise::plugin {
         combo_out_ch_.addListener(this);
         addAndMakeVisible(combo_out_ch_);
 
-        // section Info
+        // -- Interface info --
+        // Entree
         label_in_info_.setJustificationType(juce::Justification::topLeft);
         label_in_info_.setMinimumHorizontalScale(1.0f);
         addAndMakeVisible(label_in_info_);
-
+        // Sortie
         label_out_info_.setJustificationType(juce::Justification::topLeft);
         label_out_info_.setMinimumHorizontalScale(1.0f);
         addAndMakeVisible(label_out_info_);
 
-        populateCombosDriver();
+        // -- Modules --
+        // list of modules
+        combo_mods_.setTextWhenNothingSelected("-- Modules --");
+        combo_mods_.getProperties().set("minimumHorizontalScale", 1.0f);
+        combo_mods_.addListener(this);
+        addAndMakeVisible(combo_mods_);
+        // info of selected module
+        label_module_info_.setJustificationType(juce::Justification::topLeft);
+        label_module_info_.setMinimumHorizontalScale(1.0f);
+        addAndMakeVisible(label_module_info_);
 
+
+        populateCombosDriver();
         populateComboBackends();
         startTimerHz(10);
     }
@@ -292,6 +305,7 @@ namespace odenise::plugin {
         stopTimer();
         combo_drv_.removeListener(this);
         combo_bcknd_.removeListener(this);
+        combo_mods_.removeListener(this);
         combo_in_iface_.removeListener(this);
         combo_in_ch_.removeListener(this);
         combo_out_iface_.removeListener(this);
@@ -385,9 +399,15 @@ namespace odenise::plugin {
         y += kSepH;
 
         // ---- chaine de traitement ------------------------------------------------
+        x = kVuW + kGap;
+        combo_mods_.setBounds( x , y, kComboChnlW, kRowH);
+        x += kComboChnlW; 
+        label_module_info_.setBounds( x , y, (2*kComboChnlW), (2*kComboChnlW));
+
+        // ---- Vu metres ------------------------------------------------
         const int vu_h = kHeight - y;
         const int vu_top = y;
-        
+        x = 0;
         vu_in_.setBounds( x, vu_top, kVuW, vu_h);
         vu_out_.setBounds( content_end_w +kGap, vu_top, kVuW, vu_h);
     }
@@ -419,6 +439,8 @@ namespace odenise::plugin {
             if (idx >= static_cast<int>(list.size())) return;
             const int id = list[static_cast<size_t>(idx)].id;
             editor->selectModule(id);*/
+            std::string infos = editor->get_module_info(cb->getSelectedId() - 1);
+            label_module_info_.setText(infos, juce::dontSendNotification);
             // TODO: afficher le modules etc...
         }
         else if (cb == &combo_bcknd_){

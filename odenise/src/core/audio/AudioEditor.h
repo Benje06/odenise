@@ -142,6 +142,7 @@ public:
     //  Module -- selectionne depuis registry.available_.
     // -----------------------------------------------------------------------
     AUDIO void   get_modules();
+    AUDIO std::string get_module_info(int module_id);
     AUDIO const  std::vector<odenise::ModuleInfo>& modules() const noexcept;
     AUDIO bool   selectModule(int mods_combo_id, const RuntimeConfig& cfg);
     AUDIO size_t selectedModuleId() const noexcept { return selected_module_id_; }

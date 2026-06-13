@@ -103,6 +103,7 @@ private:
     juce::ComboBox combo_bcknd_;      // backend compute
     // modules
     juce::ComboBox combo_mods_;       // modules
+    juce::Label    label_module_info_;
     // processing latencie
     juce::Label    label_rnd_trp_;    // Label latence round-trip    
     // -- Section entree --

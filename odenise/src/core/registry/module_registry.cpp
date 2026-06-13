@@ -381,7 +381,7 @@ BackendBase* ModuleRegistry::find_backend() const {
 
 // ---------------------------------------------------------------------------
 //  first_available_id -- retourne l'id du premier module disponible d'un kind.
-//  Sans allocation. Retourne 0 si aucun module de ce kind n'est disponible.
+//  Sans allocation. Retourne 65535 si aucun module de ce kind n'est disponible.
 // ---------------------------------------------------------------------------
 size_t ModuleRegistry::first_available_id(ModuleKind kind) const noexcept {
     for (const auto& a : available_)
@@ -403,7 +403,8 @@ std::vector<ModuleInfo> ModuleRegistry::list_available(ModuleKind kind) const {
 std::vector<ModuleInfo> ModuleRegistry::list_available() const {
     std::vector<ModuleInfo> out;
     for (const auto& a : available_)
-        out.push_back(a.info);
+        if (a.info.kind != odenise::ModuleKind::ComputeBackend)
+            out.push_back(a.info);
     return out;
 }
 ModuleInfo ModuleRegistry::get_available_module_info(size_t available_id) const {

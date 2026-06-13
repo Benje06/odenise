@@ -190,6 +190,9 @@ bool AudioEditor::selectBackend(size_t bcknd_combo_id){
 void AudioEditor::get_modules(){
     modules_ = std::move(engine_->modules());
 };
+std::string AudioEditor::get_module_info(int module_id){
+    return modules_[module_id].description;
+}
 const  std::vector<odenise::ModuleInfo>& AudioEditor::modules() const noexcept{
     return modules_;
 };
