@@ -62,6 +62,12 @@ public:
     // [RT] Passthrough : copie entree vers sortie.
     void process(size_t num_frames) noexcept override;
 
+    // [CTRL] Description statique des ports du module.
+    const odenise::PortDef* ports(int& count) const noexcept override;
+ 
+    // helper self-test
+    void inject_output_for_test(void* buf) noexcept;
+
     void setAudioIO(odenise::TrackIO io) override;
 
 private:

@@ -106,6 +106,37 @@ inline constexpr size_t kBackendROCm = 4;
 // reservez des plages > 99 pour les backends tiers
 
 // ---------------------------------------------------------------------------
+//  Types de ports inter-modules (extensibles par entier libre).
+//  Un module tiers declare ses propres kinds (> 99) sans modifier ce fichier.
+//  Constantes predefinies :
+//    kPortAudio    = 0  -- PCM float (jaune en UI)
+//    kPortSpectral = 1  -- magnitude/phase STFT (bleu en UI)
+//    kPortCtrl     = 2  -- scalaire/vecteur de controle (rouge en UI)
+//    kPortSync     = 3  -- synchronisation de trame (violet en UI)
+// ---------------------------------------------------------------------------
+using PortKind = int;
+constexpr PortKind kPortAudio    = 0;
+constexpr PortKind kPortSpectral = 1;
+constexpr PortKind kPortCtrl     = 2;
+constexpr PortKind kPortSync     = 3;
+// reservez des plages > 99 pour les kinds tiers
+ 
+enum class PortDir { In, Out };
+ 
+// ---------------------------------------------------------------------------
+//  PortDef -- description statique d'un port d'un module.
+//  Declaree par chaque module via ports() -- valide tant que le module est
+//  charge. Zéro allocation : tableau statique dans le .cpp du module.
+// ---------------------------------------------------------------------------
+struct PortDef {
+    int         id;             // unique dans le module
+    PortKind    kind;           // kPortAudio, kPortSpectral, kPortCtrl, kPortSync, ...
+    PortDir     dir;            // In ou Out
+    int         channel_count;  // 1 = mono, 2 = stereo
+    const char* name;           // ex. "audio_in", "gate_out", "spectral_out"
+};
+
+// ---------------------------------------------------------------------------
 //  Enums
 // ---------------------------------------------------------------------------
 enum class Status {
@@ -425,6 +456,15 @@ public:
     // [RT] Traitement d'un bloc. Le module lit depuis son entree cablee,
     // ecrit dans son output_buf(). Zéro allocation, zéro verrou.
     virtual void process(size_t num_frames) noexcept = 0;
+
+        // [CTRL] Description statique des ports du module.
+    // Retourne un tableau statique (zéro allocation) et sa taille via 'count'.
+    // Valide tant que le module est charge.
+    // Defaut : aucun port declare (count=0, retourne nullptr).
+    virtual const PortDef* ports(int& count) const noexcept {
+        count = 0;
+        return nullptr;
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -569,6 +609,10 @@ public:
     virtual std::vector<ModuleInfo> modules(ModuleKind kind) const = 0;
     // [CTRL] tous les modules reellement charges(peuple l'UI).
     virtual std::vector<ModuleInfo> modules() const = 0;
+
+    virtual std::vector<ModuleInfo> loaded_modules(ModuleKind kind) const;
+    virtual std::vector<ModuleInfo> loaded_modules() const;
+
     // [CTRL] execute le self-test embarque d'un module.
     virtual TestResult selfTest(size_t module_id) const = 0;
 

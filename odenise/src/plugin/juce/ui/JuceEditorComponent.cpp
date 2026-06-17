@@ -1,9 +1,9 @@
 // ============================================================================
 //  src/plugin/juce/ui/JuceEditorComponent.cpp
 // ============================================================================
+#include "common.h"
 #include "JuceEditorComponent.h"
 #include "JucePlugin.h"
-#include "common.h"
 
 namespace odenise::plugin {
 
@@ -293,7 +293,16 @@ namespace odenise::plugin {
         label_module_info_.setJustificationType(juce::Justification::topLeft);
         label_module_info_.setMinimumHorizontalScale(1.0f);
         addAndMakeVisible(label_module_info_);
-
+        
+        // -- Vue chaine --
+        chain_view_.refresh(); // vide au demarrage, se peuple apres selectBackend
+        addAndMakeVisible(chain_view_);
+    
+        btn_layout_toggle_.setButtonText("H/V");
+        btn_layout_toggle_.onClick = [this] {
+            chain_view_.toggleLayout();
+        };
+        addAndMakeVisible(btn_layout_toggle_);
 
         populateCombosDriver();
         populateComboBackends();
@@ -398,11 +407,21 @@ namespace odenise::plugin {
         // ---- Separateur ----------------------------------------------------
         y += kSepH;
 
-        // ---- chaine de traitement ------------------------------------------------
+        // ---- chaine de traitement ------------------------------------------
         x = kVuW + kGap;
         combo_mods_.setBounds( x , y, kComboChnlW, kRowH);
         x += kComboChnlW; 
         label_module_info_.setBounds( x , y, (2*kComboChnlW), (2*kComboChnlW));
+
+        
+        // --- Vue graphique de la chaine -------------------------------------
+        // Positionnee sous la ligne combo_mods_ + label_module_info_.
+        // Le bouton H/V est aligné a droite de la zone.
+        y += kRowH + kGap;
+        const int btn_w = 36;
+        btn_layout_toggle_.setBounds(kWidth - btn_w - kGap, y, btn_w, kRowH);
+        y += kRowH + kGap / 2;
+        chain_view_.setBounds(kGap, y, kWidth - (2 * kGap), kChainViewH);
 
         // ---- Vu metres ------------------------------------------------
         const int vu_h = kHeight - y;
@@ -441,6 +460,9 @@ namespace odenise::plugin {
             editor->selectModule(id);*/
             std::string infos = editor->get_module_info(cb->getSelectedId() - 1);
             label_module_info_.setText(infos, juce::dontSendNotification);
+            // Reconstruit le graphe UI apres ajout d'un module.
+            editor->rebuildGraph();
+            chain_view_.refresh();
             // TODO: afficher le modules etc...
         }
         else if (cb == &combo_bcknd_){

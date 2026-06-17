@@ -109,6 +109,18 @@ void PassthroughModule::process(size_t num_frames) noexcept {
                     num_frames * sizeof(float));
 }
 
+// [CTRL] Ports statiques du PassthroughModule.
+//   audio_in  : entree PCM mono
+//   audio_out : sortie PCM mono (= entree, latence 0)
+const odenise::PortDef* PassthroughModule::ports(int& count) const noexcept {
+    static const odenise::PortDef s_ports[] = {
+        { 0, odenise::kPortAudio, odenise::PortDir::In,  1, "audio_in"  },
+        { 1, odenise::kPortAudio, odenise::PortDir::Out, 1, "audio_out" },
+    };
+    count = 2;
+    return s_ports;
+}
+
 void PassthroughModule::setAudioIO(odenise::TrackIO io) {
 
 };

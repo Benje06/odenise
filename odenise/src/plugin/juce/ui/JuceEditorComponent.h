@@ -19,7 +19,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
-
+#include "AudioChainView.h"
+    
 namespace odenise::plugin {
 
 class JucePlugin;
@@ -104,6 +105,10 @@ private:
     // modules
     juce::ComboBox combo_mods_;       // modules
     juce::Label    label_module_info_;
+    // -- Vue graphique de la chaine --
+    AudioChainView chain_view_;           // representaiton visuelle de l'AudioChain
+    juce::TextButton btn_layout_toggle_;  // bascule horizontal <-> vertical
+
     // processing latencie
     juce::Label    label_rnd_trp_;    // Label latence round-trip    
     // -- Section entree --
@@ -135,6 +140,8 @@ private:
     static constexpr int kGap               = 4;
     static constexpr int kRowH              = 20;
     static constexpr int kSepH              = 16;   // separateur entre sections
+    static constexpr int kChainViewH        = 280; // hauteur de la zone AudioChainView
+
 };
 
 } // namespace odenise::plugin

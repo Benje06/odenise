@@ -52,6 +52,45 @@ namespace odenise::audio {
 class AudioProcessor;
 
 // ---------------------------------------------------------------------------
+//  Graphe UI de la chaine de traitement.
+//
+//  NodeDesc : un module effectivement charge (loaded_id) avec sa position
+//             dans l'espace UI (x, y en pixels). La position UI est geree
+//             exclusivement par l'UI -- le coeur n'en a pas connaissance.
+//
+//  PortRef  : reference a un port precis d'un noeud (node loaded_id + port id).
+//
+//  EdgeDesc : connexion entre un port de sortie et un port d'entree.
+//             Reflète le cablage effectif de l'AudioChain (pointeurs
+//             output_buf() -> set_input()). L'UI en est le miroir editable :
+//             elle lit le graphe au demarrage et pousse les modifications.
+//
+//  ChainGraph : graphe complet -- nœuds + aretes.
+//               Source de verite : l'AudioChain.
+//               L'AudioEditor maintient ce miroir UI et le synchronise.
+// ---------------------------------------------------------------------------
+struct PortRef {
+    int node_loaded_id; // loaded_id du module (registry.loaded_)
+    int port_id;        // id du port dans ce module (PortDef::id)
+};
+ 
+struct NodeDesc {
+    int loaded_id;  // id dans registry.loaded_
+    int x;          // position UI en pixels (geree par AudioChainView)
+    int y;
+};
+ 
+struct EdgeDesc {
+    PortRef from;   // port de sortie (PortDir::Out)
+    PortRef to;     // port d'entree  (PortDir::In)
+};
+ 
+struct ChainGraph {
+    std::vector<NodeDesc> nodes;
+    std::vector<EdgeDesc> edges;
+};
+
+// ---------------------------------------------------------------------------
 //  AudioInterfaceInfo -- description d'une interface audio disponible.
 //  Peuplee par la couche audio (JUCE DeviceManager, ALSA, WASAPI...).
 //  Une meme interface physique peut apparaitre dans les deux listes
@@ -156,6 +195,28 @@ public:
     AUDIO bool reconfigureModule(size_t loaded_id,  const RuntimeConfig& cfg);
 
     // -----------------------------------------------------------------------
+    //  Graphe UI de la chaine (miroir de l'AudioChain).
+    //  Reconstruit depuis l'etat courant de l'AudioChain (apres bind/insert).
+    //  L'UI appelle rebuildGraph() apres chaque modification structurelle,
+    //  puis lit graph() pour rafraichir AudioChainView.
+    // -----------------------------------------------------------------------
+    AUDIO void              rebuildGraph();
+    AUDIO const ChainGraph& graph() const noexcept { return graph_; }
+ 
+    // Deplace un noeud dans l'espace UI (modifie uniquement x,y -- pas l'AudioChain).
+    AUDIO void moveNode(int loaded_id, int x, int y);
+ 
+    // Ajoute une connexion UI et la pousse dans l'AudioChain.
+    // from_loaded_id/from_port -> to_loaded_id/to_port.
+    // Retourne false si les types de ports sont incompatibles ou si le
+    // loaded_id est inconnu.
+    AUDIO bool connectPorts(int from_loaded_id, int from_port_id,
+                            int to_loaded_id,   int to_port_id);
+ 
+    // Supprime la connexion arrivant sur le port d'entree specifie.
+    AUDIO void disconnectPort(int to_loaded_id, int to_port_id);
+
+    // -----------------------------------------------------------------------
     //  Monitoring -- cache local mis a jour par poll().
     // -----------------------------------------------------------------------
     const LatencyInfo&     latencyInfo()     const noexcept;
@@ -171,6 +232,7 @@ private:
     AudioProcessor* processor_;
     Engine*         engine_;
     RuntimeConfig*  cfg_;
+    ChainGraph      graph_;
 
     std::vector<ModuleInfo>         backends_;
     std::vector<ModuleInfo>         modules_;

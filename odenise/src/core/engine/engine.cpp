@@ -211,6 +211,12 @@ public:
     std::vector<ModuleInfo> modules() const override {
         return registry_.list_available();
     }
+    std::vector<ModuleInfo> loaded_modules(ModuleKind kind) const override {
+        return registry_.list_loaded(kind);
+    }
+    std::vector<ModuleInfo> loaded_modules() const override {
+        return registry_.list_loaded();
+    }
 
     TestResult selfTest(size_t available_id) const override {
         return const_cast<EngineImpl*>(this)->registry_.self_test(available_id);
