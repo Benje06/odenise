@@ -214,14 +214,14 @@ public:
     std::vector<ModuleInfo> loaded_modules(ModuleKind kind) const override {
         std::vector<ModuleInfo> out;
         for (const auto& a : registry_.list_loaded(kind))
-            if (a.info.kind != odenise::ModuleKind::ComputeBackend)
-                out.push_back(a.info);
+            out.push_back(a.info);
         return out;
     }
     std::vector<ModuleInfo> loaded_modules() const override {
         std::vector<ModuleInfo> out;
         for (const auto& a : registry_.list_loaded())
-            out.push_back(a.info);
+            if (a.info.kind != ModuleKind::ComputeBackend)
++                out.push_back(a.info);
         return out;
     }
 

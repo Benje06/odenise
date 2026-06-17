@@ -289,6 +289,13 @@ namespace odenise::plugin {
         combo_mods_.getProperties().set("minimumHorizontalScale", 1.0f);
         combo_mods_.addListener(this);
         addAndMakeVisible(combo_mods_);
+
+        btn_insert_mod_.setButtonText("+");
+        btn_insert_mod_.onClick = [this] {
+            onInsertModule();
+        };
+        addAndMakeVisible(btn_insert_mod_);
+
         // info of selected module
         label_module_info_.setJustificationType(juce::Justification::topLeft);
         label_module_info_.setMinimumHorizontalScale(1.0f);
@@ -411,6 +418,8 @@ namespace odenise::plugin {
         x = kVuW + kGap;
         combo_mods_.setBounds( x , y, kComboChnlW, kRowH);
         x += kComboChnlW; 
+        btn_insert_mod_.setBounds( x + kGap, y, kRowH, kRowH); // bouton carre "+"
+        x += kRowH + kGap;
         label_module_info_.setBounds( x , y, (2*kComboChnlW), (2*kComboChnlW));
 
         
@@ -521,6 +530,32 @@ namespace odenise::plugin {
         }
     }
 
+    void JuceEditorComponent::onInsertModule()
+    {
+        auto* editor = plugin_.layer()->editor();
+        if (!editor) return;
+
+        const int idx = combo_mods_.getSelectedId() - 1;
+        if (idx < 0) return;
+
+        const auto& list = editor->modules();
+        if (idx >= static_cast<int>(list.size())) return;
+
+        const size_t available_id = list[static_cast<size_t>(idx)].id;
+        const size_t position     = editor->loaded_modules().size();
+        RuntimeConfig* cfg        = plugin_.layer()->processor()->get_config();
+
+        if (!editor->insertModule(available_id, position, *cfg)) {
+            std::string msg_err = error(__func__,
+                _("JuceEditorComponent: insertModule failed"),
+                _("available_id=") + std::to_string(available_id));
+            LOG_ERR(msg_err);
+            return;
+        }
+
+        if (chain_view_) chain_view_->refresh();
+    }
+    
     // ----------------------------------------------------------------------------
     void JuceEditorComponent::populateCombosDriver(){
         auto* editor = plugin_.layer()->editor();

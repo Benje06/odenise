@@ -74,6 +74,8 @@ private:
     void timerCallback()                       override;
     void comboBoxChanged(juce::ComboBox* cb)   override;
 
+    void onInsertModule();
+    
     // Peuple les combos d'interfaces depuis audioInputs() / audioOutputs().
     void populateCombosDriver();
     
@@ -104,6 +106,7 @@ private:
     juce::ComboBox combo_bcknd_;      // backend compute
     // modules
     juce::ComboBox combo_mods_;       // modules
+    juce::TextButton btn_insert_mod_; // insere le module selectionne dans la chaine
     juce::Label    label_module_info_;
     // -- Vue graphique de la chaine --
     std::unique_ptr<AudioChainView> chain_view_;           // representaiton visuelle de l'AudioChain

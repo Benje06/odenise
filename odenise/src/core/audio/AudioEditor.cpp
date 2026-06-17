@@ -267,7 +267,7 @@ void AudioEditor::rebuildGraph() {
     int x = 20;
     for (const auto& info : loaded_modules_) {
         NodeDesc nd;
-        nd.loaded_id = static_cast<int>(info.id);
+        nd.loaded_id = info.id;
         nd.x         = x;
         nd.y         = 60;
         graph_.nodes.push_back(nd);
