@@ -554,6 +554,7 @@ namespace odenise::plugin {
         }
 
         if (chain_view_) chain_view_->refresh();
+        resized();
     }
     
     // ----------------------------------------------------------------------------
