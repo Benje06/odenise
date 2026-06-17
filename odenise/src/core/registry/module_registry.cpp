@@ -321,13 +321,14 @@ bool ModuleRegistry::load_module(size_t available_id) {
     }
 
     LoadedModule lm;
-    // TODO lm.info_id or lm_id must differt from am_info_id
+    // TODO lm.info.id or lm.id must differt from am_info_id
     lm.handle  = handle;
     lm.module  = module;
     lm.backend = backend;
     lm.info    = am->info;
     lm.path    = am->path;
     lm.id      = loaded_.size();
+    lm.info.id = lm.id;
     loaded_.push_back(std::move(lm));
 
     std::string msg = _("loader: loaded [");

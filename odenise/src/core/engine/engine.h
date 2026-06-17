@@ -610,8 +610,8 @@ public:
     // [CTRL] tous les modules reellement charges(peuple l'UI).
     virtual std::vector<ModuleInfo> modules() const = 0;
 
-    virtual std::vector<ModuleInfo> loaded_modules(ModuleKind kind) const;
-    virtual std::vector<ModuleInfo> loaded_modules() const;
+    virtual std::vector<ModuleInfo> loaded_modules(ModuleKind kind) const = 0;
+    virtual std::vector<ModuleInfo> loaded_modules() const = 0;
 
     // [CTRL] execute le self-test embarque d'un module.
     virtual TestResult selfTest(size_t module_id) const = 0;

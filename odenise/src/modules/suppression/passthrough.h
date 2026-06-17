@@ -65,7 +65,9 @@ public:
     // [CTRL] Description statique des ports du module.
     const odenise::PortDef* ports(int& count) const noexcept override;
  
-    // helper self-test
+    // [CTRL] Injection du buffer de sortie pour le self-test interne.
+    // Permet de fournir un buffer local sans passer par BackendContext.
+    // Ne jamais appeler depuis le chemin RT.
     void inject_output_for_test(void* buf) noexcept;
 
     void setAudioIO(odenise::TrackIO io) override;
@@ -77,11 +79,6 @@ private:
     // Taille maximale de bloc acceptee (pre-allouee par le backend a n_max).
     // Valeur par defaut coherente avec EngineCaps::n_max.
     static constexpr int kMaxFrames = 4096;
-
-    // [CTRL] Injection du buffer de sortie pour le self-test interne.
-    // Permet de fournir un buffer local sans passer par BackendContext.
-    // Ne jamais appeler depuis le chemin RT.
-    void inject_output_for_test(void* buf) noexcept;
 
     const float* input_      = nullptr;  // cablage : buffer entree (module precedent)
     void*        output_buf_ = nullptr;  // scratch buffer fourni par BackendContext

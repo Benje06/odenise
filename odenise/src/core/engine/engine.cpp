@@ -212,10 +212,17 @@ public:
         return registry_.list_available();
     }
     std::vector<ModuleInfo> loaded_modules(ModuleKind kind) const override {
-        return registry_.list_loaded(kind);
+        std::vector<ModuleInfo> out;
+        for (const auto& a : registry_.list_loaded(kind))
+            if (a.info.kind != odenise::ModuleKind::ComputeBackend)
+                out.push_back(a.info);
+        return out;
     }
     std::vector<ModuleInfo> loaded_modules() const override {
-        return registry_.list_loaded();
+        std::vector<ModuleInfo> out;
+        for (const auto& a : registry_.list_loaded())
+            out.push_back(a.info);
+        return out;
     }
 
     TestResult selfTest(size_t available_id) const override {
