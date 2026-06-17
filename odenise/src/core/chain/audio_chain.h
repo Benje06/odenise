@@ -8,12 +8,14 @@
 //  Principe :
 //    - Au cablage (hors RT) : tous les pointeurs src/dst et les fonctions
 //      d'execution sont resolus une fois pour toutes en ChainElement.
+//      Les connexions entre ports sont portees par ChainNode::inputs et
+//      resolues par rebuild() en appelant set_input() sur chaque module.
 //    - En RT : iteration sequentielle sur la liste plate, un appel de
 //      pointeur de fonction par element. Zero decision, zero allocation.
 //    - Recablage a chaud : la nouvelle chaine est construite dans le buffer
 //      inactif, puis swappee atomiquement. Le RT ne voit jamais d'etat
 //      intermediaire.
-// ============================================================================
+
 #pragma once
 
 #include "engine.h"
@@ -111,6 +113,18 @@ public:
     //  buffers de transfert pre-alloues.
     // -----------------------------------------------------------------------
     CHAIN std::vector<ModuleInfo> get_chain() const;
+
+    // Etablit ou modifie une connexion entre deux ports.
+    // Modifie ChainNode::inputs du noeud destination et appelle rebuild().
+    // from_loaded_id = 0 : source hardware.
+    CHAIN bool connect(BackendBase* backend,
+                       size_t from_loaded_id, int from_port_id,
+                       size_t to_loaded_id,   int to_port_id);
+
+    // Supprime la connexion arrivant sur to_port_id du noeud to_loaded_id.
+    CHAIN void disconnect(BackendBase* backend,
+                          size_t to_loaded_id, int to_port_id);
+
     // Installe un module a la position donnee dans la chaine.
     // ctx est le BackendContext fourni par le backend au module (scratch, stream).
     // Recable les voisins, insere un noeud de transfert si la transition
@@ -184,6 +198,9 @@ private:
         size_t      position = 0;
         size_t      ctx_type = kBackendAny;  // type de contexte resolu
         size_t      loaded_id = 0;
+        // Connexions entrantes -- source de verite du cablage.
+        // Peuplees a l'insert ou via connect(). Lues par rebuild().
+        std::vector<ChainConnection> inputs;
     };
 
     // Reconstruit la liste plate a partir des noeuds logiques.

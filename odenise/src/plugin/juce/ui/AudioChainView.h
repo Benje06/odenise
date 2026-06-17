@@ -10,14 +10,15 @@
 //
 //  Interactions :
 //    - Clic sur un bloc      : selection
-//    - Drag d'un bloc        : repositionnement -> AudioEditor::moveNode()
+//    - Drag d'un bloc        : repositionnement (positions_ local)
 //    - Drag port -> port     : connexion -> AudioEditor::connectPorts()
 //    - Clic droit sur arete  : deconnexion -> AudioEditor::disconnectPort()
 //    - Bouton H/V            : bascule disposition
 //
 //  Prescriptive ET descriptive :
-//    - lit graph() depuis AudioEditor (etat courant de l'AudioChain)
-//    - pousse les modifications (connect/disconnect/move) dans AudioEditor
+//    - lit get_chain() depuis AudioEditor (etat courant de l'AudioChain)
+//    - pousse les connexions/deconnexions dans AudioEditor
+//    - gere les positions UI des blocs en local (positions_)
 //
 //  refresh() doit etre appele depuis le thread UI apres toute modification
 //  structurelle de la chaine (insert, replace, remove).
@@ -27,6 +28,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "AudioEditor.h"
+#include <unordered_map>
 
 namespace odenise::plugin {
 
@@ -109,7 +111,7 @@ private:
     // -----------------------------------------------------------------------
     //  Helpers
     // -----------------------------------------------------------------------
-    void rebuildBlocks();   // reconstruit blocks_ depuis graph_ -- appele par refresh()
+    void rebuildBlocks();   // reconstruit blocks_ depuis get_chain() -- appele par refresh()
     void layoutBlocks();    // calcule bounds + centres de ports
     void computePortCentres(BlockGeom& blk);
     void distributePortsOnEdge(std::vector<PortGeom*>& ports,
@@ -129,6 +131,14 @@ private:
     // -----------------------------------------------------------------------
     odenise::audio::AudioEditor* editor_       = nullptr;
     std::vector<BlockGeom>       blocks_;       // stable entre deux refresh()
+    // Positions UI des blocs, indexees par loaded_id.
+    // Propriete exclusive de AudioChainView -- jamais transmises au coeur.
+    // Initialisees par layoutBlocks() pour les nouveaux noeuds,
+    // mises a jour par mouseUp (MoveBlock).
+    std::unordered_map<size_t, juce::Point<int>> positions_;
+    // Derniere ChainDesc lue depuis AudioEditor::get_chain().
+    // Mise a jour par refresh(), lue par drawEdges() et rebuildBlocks().
+    odenise::audio::ChainDesc    chain_desc_;
     int                          selected_block_ = -1;
     DragState                    drag_;
 

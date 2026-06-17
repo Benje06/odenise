@@ -225,26 +225,26 @@ bool AudioEditor::insertModule(size_t available_id, size_t position,
     const bool status = processor_->insertModule(available_id, position, cfg);
     if (status) {
         get_loaded_modules();
-        rebuildGraph();
     }
     return status;
 }
+
 bool AudioEditor::replaceModule(size_t available_id, size_t position,
                                 const RuntimeConfig& cfg) {
     if (!processor_) return false;
     const bool status = processor_->replaceModule(available_id, position, cfg);
     if (status) {
         get_loaded_modules();
-        rebuildGraph();
     }
     return status;
 }
+
 void AudioEditor::removeModule(size_t position) {
     if (!processor_) return;
     processor_->unBindModule(position);
     get_loaded_modules();
-    rebuildGraph();
 }
+
 bool AudioEditor::reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg) {
     if (!processor_) return false;
     return processor_->reconfigureModule(loaded_id, cfg);
@@ -252,89 +252,41 @@ bool AudioEditor::reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg) 
 
 
 // ----------------------------------------------------------------------------
-//  Graphe UI
+//  Chaine
 // ----------------------------------------------------------------------------
- 
-void AudioEditor::rebuildGraph() {
-    graph_.nodes.clear();
-    graph_.edges.clear();
-    if (!engine_) return;
- 
-    // Reconstruit les noeuds depuis la liste des modules charges.
-    // Les positions UI sont initialisees en disposition horizontale par defaut
-    // (l'utilisateur peut ensuite les deplacer).
+ChainDesc AudioEditor::get_chain() const {
+    ChainDesc desc;
+    if (!engine_) return desc;
 
-    int x = 20;
-    for (const auto& info : engine_->get_chain()) {
-        NodeDesc nd;
-        nd.loaded_id = info.id;
-        nd.x         = x;
-        nd.y         = 60;
-        graph_.nodes.push_back(nd);
-        x += 160; // espacement horizontal initial
-    }
- 
-    // Reconstruit les aretes depuis le cablage serie courant de l'AudioChain.
-    // Dans le modele serie (cablage lineaire), chaque noeud[i].audio_out
-    // est connecte a noeud[i+1].audio_in.
-    for (size_t i = 0; i + 1 < graph_.nodes.size(); ++i) {
-        EdgeDesc ed;
-        ed.from.node_loaded_id = graph_.nodes[i].loaded_id;
-        ed.from.port_id        = 1; // audio_out (id=1 par convention)
-        ed.to.node_loaded_id   = graph_.nodes[i + 1].loaded_id;
-        ed.to.port_id          = 0; // audio_in  (id=0 par convention)
-        graph_.edges.push_back(ed);
-    }
-}
- 
-void AudioEditor::moveNode(size_t loaded_id, int x, int y) {
-    for (auto& nd : graph_.nodes) {
-        if (nd.loaded_id == loaded_id) {
-            nd.x = x;
-            nd.y = y;
-            return;
+    // Noeuds : enrichis par engine_->get_chain() qui remonte les ModuleInfo
+    // avec leurs connexions entrantes (inputs) depuis l'AudioChain.
+    desc.nodes = engine_->get_chain();
+
+    // Connexions : liste plate construite depuis les inputs de chaque noeud,
+    // pour faciliter le parcours par la couche UI sans re-parcourir les nodes.
+    for (const auto& mi : desc.nodes) {
+        for (const auto& conn : mi.inputs) {
+            ChainConnection c;
+            c.from_loaded_id = conn.from_loaded_id;
+            c.from_port_id   = conn.from_port_id;
+            c.to_port_id     = conn.to_port_id;
+            c.to_port_id     = conn.to_port_id;
+            desc.connections.push_back(c);
         }
     }
+    return desc;
 }
- 
+
 bool AudioEditor::connectPorts(size_t from_loaded_id, int from_port_id,
                                size_t to_loaded_id,   int to_port_id) {
-    // Verifie que les deux noeuds existent dans le graphe.
-    bool from_ok = false, to_ok = false;
-    for (const auto& nd : graph_.nodes) {
-        if (nd.loaded_id == from_loaded_id) from_ok = true;
-        if (nd.loaded_id == to_loaded_id)   to_ok   = true;
-    }
-    if (!from_ok || !to_ok) {
-        std::string msg_err = error(__func__,
-            _("AudioEditor: connectPorts unknown loaded_id"),
-            std::to_string(from_loaded_id) + " -> " + std::to_string(to_loaded_id));
-        LOG_ERR(msg_err);
-        return false;
-    }
- 
-    // Supprime une eventuelle arete existante arrivant sur le meme port d'entree.
-    disconnectPort(to_loaded_id, to_port_id);
- 
-    EdgeDesc ed;
-    ed.from.node_loaded_id = from_loaded_id;
-    ed.from.port_id        = from_port_id;
-    ed.to.node_loaded_id   = to_loaded_id;
-    ed.to.port_id          = to_port_id;
-    graph_.edges.push_back(ed);
- 
-    // TODO Phase 3b : pousser le recablage dans AudioChain via processor_.
-    return true;
+    if (!processor_) return false;
+    return processor_->connectPorts(from_loaded_id, from_port_id,
+                                    to_loaded_id,   to_port_id);
 }
- 
+
 void AudioEditor::disconnectPort(size_t to_loaded_id, int to_port_id) {
-    graph_.edges.erase(
-        std::remove_if(graph_.edges.begin(), graph_.edges.end(),
-            [&](const EdgeDesc& ed) {
-                return ed.to.node_loaded_id == to_loaded_id
-                    && ed.to.port_id        == to_port_id;
-            }),
-        graph_.edges.end());
+    if (!processor_) return;
+    processor_->disconnectPort(to_loaded_id, to_port_id);
 }
 
 // ----------------------------------------------------------------------------

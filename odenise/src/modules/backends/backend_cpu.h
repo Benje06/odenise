@@ -7,7 +7,6 @@
 
 #include "engine.h"
 #include "audio_chain.h"
-
 #include <algorithm>    // std::min, std::max
 #include <chrono>       // std::chrono::steady_clock
 #include <cstring>      // std::memcpy
@@ -81,8 +80,6 @@ public:
     // -----------------------------------------------------------------------
     //  install_module / uninstall_module
     // -----------------------------------------------------------------------
-    std::vector<odenise::ModuleInfo> get_chain() const noexcept;
-
     bool install_module(odenise::ModuleBase* mod,
                         odenise::ModuleKind  kind,
                         size_t position,
@@ -102,6 +99,12 @@ public:
     // -----------------------------------------------------------------------
     void setAudioIO(odenise::TrackIO io) override;
 
+    std::vector<odenise::ModuleInfo> get_chain() const noexcept override;
+
+    bool connect(size_t from_loaded_id, int from_port_id,
+                 size_t to_loaded_id,   int to_port_id) override;
+
+    void disconnect(size_t to_loaded_id, int to_port_id) override;
     // -----------------------------------------------------------------------
     //  measure -- mesure de latence et de charge CPU hors RT.
     // -----------------------------------------------------------------------

@@ -72,6 +72,18 @@ namespace odenise::audio {
         LOG(msg);
     }
 
+    bool AudioProcessor::connectPorts(size_t from_loaded_id, int from_port_id,
+                                    size_t to_loaded_id,   int to_port_id) {
+        if (!engine_) return false;
+        return engine_->connectPorts(from_loaded_id, from_port_id,
+                                    to_loaded_id,   to_port_id);
+    }
+
+    void AudioProcessor::disconnectPort(size_t to_loaded_id, int to_port_id) {
+        if (!engine_) return;
+        engine_->disconnectPort(to_loaded_id, to_port_id);
+    }
+    
     // ----------------------------------------------------------------------------
     //  Gestion des modules
     // ----------------------------------------------------------------------------

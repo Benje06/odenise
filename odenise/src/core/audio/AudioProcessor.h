@@ -76,7 +76,9 @@ public:
     // [CTRL] Suspend le backend via engine.
     // TODO : Engine::release() a ajouter.
     AUDIO void release();
-
+    AUDIO bool connectPorts(size_t from_loaded_id, int from_port_id,
+                            size_t to_loaded_id,   int to_port_id);
+    AUDIO void disconnectPort(size_t to_loaded_id, int to_port_id);
     // ----------------------------------------------------------------------------
     //  Gestion des modules
     // ----------------------------------------------------------------------------

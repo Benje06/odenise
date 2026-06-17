@@ -22,7 +22,6 @@
 #include <span>
 #include <string>
 #include <vector>
-
 // Visibilite des symboles
 //   ODENISE_API    : API publique de la lib partagee libodenise. Exportee a la
 //                    compilation de la lib, importee chez le consommateur.
@@ -120,9 +119,9 @@ struct OdeniseTestResultC {
     const char* detail;
 };
 
-namespace odenise {
 
-struct ChainElement;
+
+namespace odenise {
 
 inline constexpr size_t kAbiVersion = 1;
 
@@ -230,7 +229,8 @@ struct EngineCaps {
 struct RuntimeConfig {
     /* Globals */
     size_t                     backend_id = 0;  // 0 = AUTO ; sinon un des id du registre
-    std::vector<ChainElement>  modules;         // TODO: reflete l'audio_chain liste
+    //std::vector<ChainElement>  modules;         // TODO: reflete l'audio_chain liste
+    // TODO: liste des modules de la chaine -- a remplacer par ChainDesc
     size_t  ring_size          = 4096;
     /* Audio */
     int     sample_rate        = 48000;        // sample rate frequency
@@ -270,7 +270,22 @@ struct BackendCaps {
 };
 
 // ---------------------------------------------------------------------------
-//  Description d'un module (peuplement des listes UI)
+//  ChainConnection -- connexion entrante sur un port d'un noeud.
+//
+//  from_loaded_id = 0  : source hardware (interface audio selectionnee).
+//  from_loaded_id > 0  : loaded_id d'un module dans la chaine.
+//  from_port_id        : port de sortie du noeud source.
+//  to_port_id          : port d'entree du noeud destination.
+// ---------------------------------------------------------------------------
+struct ChainConnection {
+    size_t from_loaded_id = 0; // 0 = hardware input
+    int    from_port_id   = 0;
+    int    to_port_id     = 0;
+    size_t to_loaded_id   = 0;
+};
+
+// ---------------------------------------------------------------------------
+//  Description d'un module
 // ---------------------------------------------------------------------------
 struct ModuleInfo {
     size_t      id               = 0;
@@ -281,6 +296,9 @@ struct ModuleInfo {
     std::string description;
     const PortDef* ports         = nullptr;
     int            port_count    = 0;
+    // Connexions entrantes sur ce module -- peuplees par AudioChain::get_chain().
+    // from_loaded_id = 0 : source hardware. Vide si aucune connexion etablie.
+    std::vector<ChainConnection> inputs;
 };
 
 struct TestResult {                   // self-test embarque par chaque module
@@ -502,8 +520,13 @@ public:
     // Valide tant que le module est charge. Jamais nul.
     virtual const OdeniseTestResultC* self_test_c() const noexcept = 0;
 
-    // Vue ordonnee de la chaine du backend actif, dans l'ordre de traitement.
+    // Vue ordonnee de la chaine du backend actif.
     virtual std::vector<ModuleInfo> get_chain() const noexcept = 0;
+    // [CTRL] Cable deux ports. from_loaded_id = 0 : source hardware.
+    virtual bool connect(size_t from_loaded_id, int from_port_id,
+                         size_t to_loaded_id,   int to_port_id) = 0;
+    // [CTRL] Supprime la connexion arrivant sur to_port_id.
+    virtual void disconnect(size_t to_loaded_id, int to_port_id) = 0;
 
     // [CTRL] Installe un module dans la chaine a la position donnee.
     // Le backend choisit le contexte adequat (CPU ou GPU) selon le
@@ -568,8 +591,6 @@ public:
     void pause(){ P_Thread2(); P_Thread(); }
     void restart(){ R_Thread(); R_Thread2(); }
 protected:
-    // Ecrit par measure() hors RT, lu par l'engine/UI hors RT via les
-    // accesseurs publics. Jamais touche par process() -- zéro impact RT.
     LatencyInfo             last_latency_;
     ProcessingStats         last_stats_;
     std::atomic<bool>       measure_ready_{false};
@@ -623,7 +644,13 @@ public:
     virtual std::vector<ModuleInfo> loaded_modules() const = 0;
     // Vue ordonnee de la chaine du backend actif, dans l'ordre de traitement.
     virtual std::vector<ModuleInfo> get_chain() const = 0;
+    // [CTRL] Cable deux ports dans l'AudioChain via le backend.
+    // from_loaded_id = 0 : source hardware.
+    virtual bool connectPorts(size_t from_loaded_id, int from_port_id,
+                              size_t to_loaded_id,   int to_port_id) = 0;
 
+    // [CTRL] Supprime la connexion arrivant sur to_port_id du module to_loaded_id.
+    virtual void disconnectPort(size_t to_loaded_id, int to_port_id) = 0;
     // [CTRL] execute le self-test embarque d'un module.
     virtual TestResult selfTest(size_t module_id) const = 0;
 

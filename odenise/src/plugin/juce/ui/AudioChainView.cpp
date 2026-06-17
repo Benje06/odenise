@@ -20,6 +20,8 @@ AudioChainView::AudioChainView(odenise::audio::AudioEditor* editor)
 //  JAMAIS appele depuis paint().
 // ============================================================================
 void AudioChainView::refresh() {
+    if (editor_)
+        chain_desc_ = editor_->get_chain();
     rebuildBlocks();
     layoutBlocks();
     repaint();
@@ -34,53 +36,51 @@ void AudioChainView::toggleLayout() {
 }
 
 // ============================================================================
-//  rebuildBlocks() -- construit blocks_ depuis graph() + loaded_modules()
+//  rebuildBlocks() -- construit blocks_ depuis chain_desc_
 // ============================================================================
 void AudioChainView::rebuildBlocks() {
     blocks_.clear();
     if (!editor_) return;
 
-    const auto& graph  = editor_->graph();
-    const auto& loaded = editor_->loaded_modules();
-
-    for (const auto& nd : graph.nodes) {
+    for (const auto& mi : chain_desc_.nodes) {
         BlockGeom blk;
-        blk.loaded_id = nd.loaded_id;
-        blk.bounds    = juce::Rectangle<int>(nd.x, nd.y, kBlockW, kBlockH);
+        blk.loaded_id  = mi.id;
+        blk.label      = juce::String(mi.name);
+        blk.kind_label = juce::String(odenise::kindName(mi.kind));
 
-        for (const auto& lmi : loaded) {
-            if (lmi.id != nd.loaded_id) continue;
+        // Position UI depuis positions_ -- initialisee par layoutBlocks().
+        const auto it = positions_.find(mi.id);
+        if (it != positions_.end())
+            blk.bounds = juce::Rectangle<int>(it->second.getX(), it->second.getY(),
+                                              kBlockW, kBlockH);
+        else
+            blk.bounds = juce::Rectangle<int>(0, 0, kBlockW, kBlockH);
 
-            blk.label      = juce::String(lmi.name);
-            blk.kind_label = juce::String(odenise::kindName(lmi.kind));
-
-            blk.ports.clear();
-            if (lmi.ports && lmi.port_count > 0) {
-                for (int pi = 0; pi < lmi.port_count; ++pi) {
-                    const auto& pd = lmi.ports[pi];
-                    PortGeom pg;
-                    pg.port_id = pd.id;
-                    pg.kind    = pd.kind;
-                    pg.dir     = pd.dir;
-                    pg.name    = juce::String(pd.name ? pd.name : "");
-                    blk.ports.push_back(pg);
-                }
-            } else {
-                PortGeom pin;
-                pin.port_id = 0; pin.kind = kPortAudio;
-                pin.dir = PortDir::In; pin.name = "audio_in";
-                blk.ports.push_back(pin);
-
-                PortGeom pout;
-                pout.port_id = 1; pout.kind = kPortAudio;
-                pout.dir = PortDir::Out; pout.name = "audio_out";
-                blk.ports.push_back(pout);
+        blk.ports.clear();
+        if (mi.ports && mi.port_count > 0) {
+            for (int pi = 0; pi < mi.port_count; ++pi) {
+                const auto& pd = mi.ports[pi];
+                PortGeom pg;
+                pg.port_id = pd.id;
+                pg.kind    = pd.kind;
+                pg.dir     = pd.dir;
+                pg.name    = juce::String(pd.name ? pd.name : "");
+                blk.ports.push_back(pg);
             }
-            break;
+        } else {
+            // Ports par defaut si le module n'en declare pas.
+            PortGeom pin;
+            pin.port_id = 0; pin.kind = kPortAudio;
+            pin.dir = PortDir::In; pin.name = "audio_in";
+            blk.ports.push_back(pin);
+           PortGeom pout;
+            pout.port_id = 1; pout.kind = kPortAudio;
+            pout.dir = PortDir::Out; pout.name = "audio_out";
+            blk.ports.push_back(pout);
         }
 
         if (blk.label.isEmpty())
-            blk.label = "module #" + juce::String(static_cast<int>(nd.loaded_id));
+            blk.label = "module #" + juce::String(static_cast<int>(mi.id));
 
         blocks_.push_back(std::move(blk));
     }
@@ -100,7 +100,10 @@ void AudioChainView::layoutBlocks() {
         int x = (w - total_w) / 2;
         const int y = (h - kBlockH) / 2;
         for (auto& blk : blocks_) {
-            blk.bounds = juce::Rectangle<int>(x, y, kBlockW, kBlockH);
+             if (positions_.find(blk.loaded_id) == positions_.end()) {
+                positions_[blk.loaded_id] = juce::Point<int>(x, y);
+                blk.bounds = juce::Rectangle<int>(x, y, kBlockW, kBlockH);
+            }
             x += kBlockW + kBlockGapH;
             computePortCentres(blk);
         }
@@ -110,7 +113,10 @@ void AudioChainView::layoutBlocks() {
         const int x = (w - kBlockW) / 2;
         int y = (h - total_h) / 2;
         for (auto& blk : blocks_) {
-            blk.bounds = juce::Rectangle<int>(x, y, kBlockW, kBlockH);
+            if (positions_.find(blk.loaded_id) == positions_.end()) {
+                positions_[blk.loaded_id] = juce::Point<int>(x, y);
+                blk.bounds = juce::Rectangle<int>(x, y, kBlockW, kBlockH);
+            }
             y += kBlockH + kBlockGapV;
             computePortCentres(blk);
         }
@@ -209,17 +215,15 @@ void AudioChainView::drawBlock(juce::Graphics& g,
 
 void AudioChainView::drawEdges(juce::Graphics& g) const {
     if (!editor_) return;
-    const auto& edges = editor_->graph().edges;
-
-    for (const auto& ed : edges) {
+    for (const auto& conn : chain_desc_.connections) {
         juce::Point<int> from_pt, to_pt;
         bool from_ok = false, to_ok = false;
         PortKind edge_kind = kPortAudio;
 
         for (const auto& blk : blocks_) {
-            if (blk.loaded_id == ed.from.node_loaded_id) {
+             if (blk.loaded_id == conn.from_loaded_id) {
                 for (const auto& pg : blk.ports) {
-                    if (pg.port_id == ed.from.port_id) {
+                    if (pg.port_id == conn.from_port_id) {
                         from_pt   = pg.centre;
                         edge_kind = pg.kind;
                         from_ok   = true;
@@ -227,9 +231,9 @@ void AudioChainView::drawEdges(juce::Graphics& g) const {
                     }
                 }
             }
-            if (blk.loaded_id == ed.to.node_loaded_id) {
+             if (blk.loaded_id == conn.to_loaded_id) {
                 for (const auto& pg : blk.ports) {
-                    if (pg.port_id == ed.to.port_id) {
+                    if (pg.port_id == conn.to_port_id) {
                         to_pt = pg.centre;
                         to_ok = true;
                         break;
@@ -322,7 +326,9 @@ void AudioChainView::mouseUp(const juce::MouseEvent& e) {
 
     if (drag_.mode == DragMode::MoveBlock && drag_.block_idx >= 0 && editor_) {
         const auto& blk = blocks_[drag_.block_idx];
-        editor_->moveNode(blk.loaded_id, blk.bounds.getX(), blk.bounds.getY());
+        // Position UI : propriete exclusive de AudioChainView.
+        positions_[blk.loaded_id] = juce::Point<int>(blk.bounds.getX(),
+                                                      blk.bounds.getY());
     }
 
     if (drag_.mode == DragMode::DrawEdge
@@ -339,8 +345,8 @@ void AudioChainView::mouseUp(const juce::MouseEvent& e) {
                 editor_->connectPorts(
                     src.loaded_id, src.ports[drag_.port_idx].port_id,
                     dst.loaded_id, dst.ports[pi].port_id);
-                // rebuildGraph() est appele par connectPorts si necessaire.
-                // refresh() repopule blocks_ depuis le graphe mis a jour.
+                    // connectPorts() cable l'AudioChain.
+                    // refresh() relit get_chain() pour mettre a jour blocks_.
                 refresh();
                 break;
             }

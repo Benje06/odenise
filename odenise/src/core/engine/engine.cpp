@@ -8,7 +8,6 @@
 // install_module() / uninstall_module().
 #include "engine.h"
 #include "module_registry.h"
-#include "audio_chain.h"
 
 std::filesystem::path moduleDir() {
     std::string str = ODENISE_MODULE_INSTALL_DIR;
@@ -228,6 +227,22 @@ public:
     std::vector<ModuleInfo> get_chain() const override {
         if (!backend_) return {};
         return backend_->get_chain();
+    }
+    bool connectPorts(size_t from_loaded_id, int from_port_id,
+                      size_t to_loaded_id,   int to_port_id) override {
+        if (!backend_) {
+            std::string msg_err = error(__func__,
+                _("engine: connectPorts called without backend"), "");
+            LOG_ERR(msg_err);
+            return false;
+        }
+        return backend_->connect(from_loaded_id, from_port_id,
+                                 to_loaded_id,   to_port_id);
+    }
+
+    void disconnectPort(size_t to_loaded_id, int to_port_id) override {
+        if (!backend_) return;
+        backend_->disconnect(to_loaded_id, to_port_id);
     }
 
     TestResult selfTest(size_t available_id) const override {

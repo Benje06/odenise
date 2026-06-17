@@ -85,52 +85,67 @@ void AudioChain::rebuild(BackendBase* backend) {
     }
 
     // Construction de la liste plate :
-    //   Pour chaque noeud, on regarde si une transition de contexte est
-    //   necessaire avec le noeud precedent. Si oui, on insere un noeud
-    //   de transfert pre-resolu avant le module.
+    //   Pour chaque noeud, on resout ses connexions entrantes (ChainNode::inputs)
+    //   en appelant set_input() avec le bon output_buf() du noeud source.
+    //   Si une transition de contexte est detectee sur une connexion,
+    //   un noeud de transfert H2D ou D2H est insere avant le module.
     for (std::size_t i = 0; i < nodes_.size(); ++i) {
         auto& node = nodes_[i];
 
-        if (i > 0) {
-            auto& prev = nodes_[i - 1];
-            const size_t prev_ctx = prev.ctx_type;
-            const size_t curr_ctx = node.ctx_type;
+        // Resout chaque connexion entrante declaree dans node.inputs.
+        for (const auto& conn : node.inputs) {
+            void* src_buf = nullptr;
+            size_t src_ctx = kBackendCPU; // hardware = CPU par defaut
 
-            // Transition CPU -> GPU : H2D
-            if (prev_ctx == kBackendCPU && curr_ctx == kBackendCUDA) {
+            if (conn.from_loaded_id == 0) {
+                // Source hardware : le buffer d'entree est fourni par le backend.
+                // set_input() sera appele par le backend lui-meme avant process().
+                // Rien a resoudre ici au cablage.
+                src_buf = nullptr;
+                src_ctx = kBackendCPU;
+            } else {
+                // Cherche le noeud source par loaded_id.
+                for (const auto& src_node : nodes_) {
+                    if (src_node.loaded_id == conn.from_loaded_id) {
+                        src_buf = src_node.module->output_buf();
+                        src_ctx = src_node.ctx_type;
+                        break;
+                    }
+                }
+            }
+
+            if (!src_buf) continue; // source hardware ou noeud source introuvable
+
+            // Transition de contexte sur cette connexion.
+            if (src_ctx == kBackendCPU && node.ctx_type == kBackendCUDA) {
                 ChainElement transfer;
                 transfer.execute = &AudioChain::exec_transfer_h2d;
-                transfer.src     = prev.module->output_buf();
-                transfer.dst     = node.module->output_buf(); // sera set_input
+                transfer.src     = src_buf;
+                transfer.dst     = node.module->output_buf();
                 transfer.bytes   = 0; // resolu par le backend a l'install
-                transfer.stream  = backend ? backend->caps_c()->is_gpu ?
-                                   nullptr : nullptr : nullptr; // stream CUDA
+                transfer.stream  = nullptr; // stream CUDA : resolu par le backend
                 flat.push_back(transfer);
-                std::string msg = _("audio_chain: inserted H2D transfer at position ");
-                msg += std::to_string(i);
+                std::string msg = _("audio_chain: inserted H2D transfer before loaded_id=");
+                msg += std::to_string(node.loaded_id);
                 LOG(msg);
-            }
-            // Transition GPU -> CPU : D2H
-            else if (prev_ctx == kBackendCUDA && curr_ctx == kBackendCPU) {
+            } else if (src_ctx == kBackendCUDA && node.ctx_type == kBackendCPU) {
                 ChainElement transfer;
                 transfer.execute = &AudioChain::exec_transfer_d2h;
-                transfer.src     = prev.module->output_buf();
+                transfer.src     = src_buf;
                 transfer.dst     = node.module->output_buf();
                 transfer.bytes   = 0;
                 transfer.stream  = nullptr;
                 flat.push_back(transfer);
-                std::string msg = _("audio_chain: inserted D2H transfer at position ");
-                msg += std::to_string(i);
+                std::string msg = _("audio_chain: inserted D2H transfer before loaded_id=");
+                msg += std::to_string(node.loaded_id);
                 LOG(msg);
-            }
-            // Meme contexte : cablage direct, zero copie.
-            // set_input est appele sur le module pour pointer sur le bon buffer.
-            else {
-                node.module->set_input(prev.module->output_buf());
+            } else {
+                // Meme contexte : cablage direct via set_input().
+                node.module->set_input(src_buf);
             }
         }
 
-        // Noeud module
+        // Noeud module.
         ChainElement elem;
         elem.execute = &AudioChain::exec_module;
         elem.module  = node.module;
@@ -150,6 +165,53 @@ void AudioChain::rebuild(BackendBase* backend) {
 }
 
 // ---------------------------------------------------------------------------
+//  connect -- etablit une connexion entre deux ports et rebuild.
+// ---------------------------------------------------------------------------
+bool AudioChain::connect(BackendBase* backend,
+                         size_t from_loaded_id, int from_port_id,
+                         size_t to_loaded_id,   int to_port_id) {
+    // Cherche le noeud destination.
+    for (auto& node : nodes_) {
+        if (node.loaded_id != to_loaded_id) continue;
+
+        // Supprime une connexion existante sur ce port d'entree.
+        node.inputs.erase(
+            std::remove_if(node.inputs.begin(), node.inputs.end(),
+                [&](const ChainConnection& c) { return c.to_port_id == to_port_id; }),
+            node.inputs.end());
+
+        ChainConnection conn;
+        conn.from_loaded_id = from_loaded_id;
+        conn.from_port_id   = from_port_id;
+        conn.to_port_id     = to_port_id;
+        node.inputs.push_back(conn);
+
+        rebuild(backend);
+        return true;
+    }
+    std::string msg_err = error(__func__,
+        _("audio_chain: connect unknown to_loaded_id"),
+        std::to_string(to_loaded_id));
+    LOG_ERR(msg_err);
+    return false;
+}
+
+// ---------------------------------------------------------------------------
+//  disconnect -- supprime la connexion sur un port d'entree et rebuild.
+// ---------------------------------------------------------------------------
+void AudioChain::disconnect(BackendBase* backend,
+                            size_t to_loaded_id, int to_port_id) {
+    for (auto& node : nodes_) {
+        if (node.loaded_id != to_loaded_id) continue;
+        node.inputs.erase(
+            std::remove_if(node.inputs.begin(), node.inputs.end(),
+                [&](const ChainConnection& c) { return c.to_port_id == to_port_id; }),
+            node.inputs.end());
+        rebuild(backend);
+        return;
+    }
+}
+// ---------------------------------------------------------------------------
 //  recalculate_latency -- somme les latences declarees de tous les modules.
 // ---------------------------------------------------------------------------
 void AudioChain::recalculate_latency() {
@@ -162,24 +224,25 @@ void AudioChain::recalculate_latency() {
 }
 
 std::vector<ModuleInfo> AudioChain::get_chain() const {
-        std::vector<ModuleInfo> out;
-        out.reserve(nodes_.size());
-        for (const auto& node : nodes_) {
-            const OdeniseModuleInfoC* c = node.module->info_c();
-            if (!c) continue;
-            ModuleInfo mi;
-            mi.id              = c->id;
-            mi.kind            = static_cast<ModuleKind>(c->kind);
-            mi.name            = c->name        ? c->name        : "";
-            mi.description     = c->description ? c->description : "";
-            mi.needs_gpu       = (c->needs_gpu != 0);
-            mi.backend_type_id = c->backend_type_id;
-            mi.ports           = c->ports;
-            mi.port_count      = c->port_count;
-            out.push_back(mi);
-        }
-        return out;
+    std::vector<ModuleInfo> out;
+    out.reserve(nodes_.size());
+    for (const auto& node : nodes_) {
+        const OdeniseModuleInfoC* c = node.module->info_c();
+        if (!c) continue;
+        ModuleInfo mi;
+        mi.id              = c->id;
+        mi.kind            = static_cast<ModuleKind>(c->kind);
+        mi.name            = c->name        ? c->name        : "";
+        mi.description     = c->description ? c->description : "";
+        mi.needs_gpu       = (c->needs_gpu != 0);
+        mi.backend_type_id = c->backend_type_id;
+        mi.ports           = c->ports;
+        mi.port_count      = c->port_count;
+        mi.inputs          = node.inputs; // connexions entrantes
+        out.push_back(mi);
     }
+    return out;
+}
 // ---------------------------------------------------------------------------
 //  install -- installe un module a la position donnee.
 // ---------------------------------------------------------------------------

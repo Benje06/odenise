@@ -215,10 +215,6 @@ odenise::Status CpuBackendImpl::reconfigure(const odenise::BackendCaps& b_caps,
 // -----------------------------------------------------------------------
 //  install_module / uninstall_module
 // -----------------------------------------------------------------------
-std::vector<odenise::ModuleInfo> CpuBackendImpl::get_chain() const noexcept {
-    return chain_.get_chain();
-}
-
 bool CpuBackendImpl::install_module(odenise::ModuleBase*  mod,
                                     odenise::ModuleKind  kind,
                                     size_t               position,
@@ -264,6 +260,19 @@ void CpuBackendImpl::setAudioIO(odenise::TrackIO io) {
     io_ = io;
     R_Thread();
     LOG(LOG_OUT());
+}
+std::vector<odenise::ModuleInfo> CpuBackendImpl::get_chain() const noexcept {
+    return chain_.get_chain();
+}
+
+bool CpuBackendImpl::connect(size_t from_loaded_id, int from_port_id,
+                              size_t to_loaded_id,   int to_port_id) {
+    return chain_.connect(this, from_loaded_id, from_port_id,
+                                to_loaded_id,   to_port_id);
+}
+
+void CpuBackendImpl::disconnect(size_t to_loaded_id, int to_port_id) {
+    chain_.disconnect(this, to_loaded_id, to_port_id);
 }
 
 // -----------------------------------------------------------------------
