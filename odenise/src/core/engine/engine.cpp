@@ -221,7 +221,7 @@ public:
         std::vector<ModuleInfo> out;
         for (const auto& a : registry_.list_loaded())
             if (a.info.kind != ModuleKind::ComputeBackend)
-+                out.push_back(a.info);
+                out.push_back(a.info);
         return out;
     }
 
