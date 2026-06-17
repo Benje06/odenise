@@ -215,6 +215,10 @@ odenise::Status CpuBackendImpl::reconfigure(const odenise::BackendCaps& b_caps,
 // -----------------------------------------------------------------------
 //  install_module / uninstall_module
 // -----------------------------------------------------------------------
+std::vector<odenise::ModuleInfo> CpuBackendImpl::get_chain() const noexcept {
+    return chain_.get_chain();
+}
+
 bool CpuBackendImpl::install_module(odenise::ModuleBase*  mod,
                                     odenise::ModuleKind  kind,
                                     size_t               position,

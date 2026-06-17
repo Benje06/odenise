@@ -161,6 +161,25 @@ void AudioChain::recalculate_latency() {
         on_latency_changed(on_latency_changed_user, declared_latency_);
 }
 
+std::vector<ModuleInfo> AudioChain::get_chain() const {
+        std::vector<ModuleInfo> out;
+        out.reserve(nodes_.size());
+        for (const auto& node : nodes_) {
+            const OdeniseModuleInfoC* c = node.module->info_c();
+            if (!c) continue;
+            ModuleInfo mi;
+            mi.id              = c->id;
+            mi.kind            = static_cast<ModuleKind>(c->kind);
+            mi.name            = c->name        ? c->name        : "";
+            mi.description     = c->description ? c->description : "";
+            mi.needs_gpu       = (c->needs_gpu != 0);
+            mi.backend_type_id = c->backend_type_id;
+            mi.ports           = c->ports;
+            mi.port_count      = c->port_count;
+            out.push_back(mi);
+        }
+        return out;
+    }
 // ---------------------------------------------------------------------------
 //  install -- installe un module a la position donnee.
 // ---------------------------------------------------------------------------

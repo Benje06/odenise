@@ -502,9 +502,8 @@ public:
     // Valide tant que le module est charge. Jamais nul.
     virtual const OdeniseTestResultC* self_test_c() const noexcept = 0;
 
-
     // Vue ordonnee de la chaine du backend actif, dans l'ordre de traitement.
-    virtual std::vector<ModuleInfo> get_chain() const = 0;
+    virtual std::vector<ModuleInfo> get_chain() const noexcept = 0;
 
     // [CTRL] Installe un module dans la chaine a la position donnee.
     // Le backend choisit le contexte adequat (CPU ou GPU) selon le

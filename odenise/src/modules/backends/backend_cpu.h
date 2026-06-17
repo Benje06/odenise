@@ -80,7 +80,9 @@ public:
 
     // -----------------------------------------------------------------------
     //  install_module / uninstall_module
-    // -----------------------------------------------------------------------    
+    // -----------------------------------------------------------------------
+    std::vector<odenise::ModuleInfo> get_chain() const noexcept;
+
     bool install_module(odenise::ModuleBase* mod,
                         odenise::ModuleKind  kind,
                         size_t position,

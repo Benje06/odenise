@@ -35,14 +35,6 @@ const OdeniseModuleInfoC* PassthroughModule::info_c() const noexcept {
     return &s_info;
 }
 
-static const OdeniseModuleInfoC s_info = {
-    odenise::kAbiVersion, 1,
-    static_cast<int>(odenise::ModuleKind::Suppression),
-    "passthrough",
-    "Module neutre : sortie = entree (validation de la chaine)",
-    0, odenise::kBackendAny,
-    
-};
 // -----------------------------------------------------------------------
 //  self_test_c -- self-test POD (frontiere inter-compilateurs).
 //  Instancie un module de test, effectue un process de 4 echantillons,

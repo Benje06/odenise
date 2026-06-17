@@ -110,7 +110,7 @@ public:
     //  Le backend est requis pour acceder aux contextes (CPU/GPU) et aux
     //  buffers de transfert pre-alloues.
     // -----------------------------------------------------------------------
-    
+    CHAIN std::vector<ModuleInfo> get_chain() const;
     // Installe un module a la position donnee dans la chaine.
     // ctx est le BackendContext fourni par le backend au module (scratch, stream).
     // Recable les voisins, insere un noeud de transfert si la transition
