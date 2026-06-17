@@ -17,6 +17,10 @@
 //  info_c -- metadonnees POD (frontiere inter-compilateurs).
 // -----------------------------------------------------------------------
 const OdeniseModuleInfoC* PassthroughModule::info_c() const noexcept {
+    static const PortDef s_ports[] = {
+        { 0, kPortAudio, PortDir::In,  1, "audio_in"  },
+        { 1, kPortAudio, PortDir::Out, 1, "audio_out" },
+    };
     static const OdeniseModuleInfoC s_info = {
         /* abi_version    */ odenise::kAbiVersion,
         /* id             */ 1,
@@ -24,11 +28,21 @@ const OdeniseModuleInfoC* PassthroughModule::info_c() const noexcept {
         /* name           */ "passthrough",
         /* description    */ "Module neutre : sortie = entree (validation de la chaine)",
         /* needs_gpu      */ 0,
-        /* backend_type_id*/ odenise::kBackendAny
+        /* backend_type_id*/ odenise::kBackendAny,
+        /* ports          */ s_ports,
+        /* port_count     */ 2
     };
     return &s_info;
 }
 
+static const OdeniseModuleInfoC s_info = {
+    odenise::kAbiVersion, 1,
+    static_cast<int>(odenise::ModuleKind::Suppression),
+    "passthrough",
+    "Module neutre : sortie = entree (validation de la chaine)",
+    0, odenise::kBackendAny,
+    
+};
 // -----------------------------------------------------------------------
 //  self_test_c -- self-test POD (frontiere inter-compilateurs).
 //  Instancie un module de test, effectue un process de 4 echantillons,
@@ -112,10 +126,10 @@ void PassthroughModule::process(size_t num_frames) noexcept {
 // [CTRL] Ports statiques du PassthroughModule.
 //   audio_in  : entree PCM mono
 //   audio_out : sortie PCM mono (= entree, latence 0)
-const odenise::PortDef* PassthroughModule::ports(int& count) const noexcept {
-    static const odenise::PortDef s_ports[] = {
-        { 0, odenise::kPortAudio, odenise::PortDir::In,  1, "audio_in"  },
-        { 1, odenise::kPortAudio, odenise::PortDir::Out, 1, "audio_out" },
+const PortDef* PassthroughModule::ports(int& count) const noexcept {
+    static const PortDef s_ports[] = {
+        { 0, kPortAudio, PortDir::In,  1, "audio_in"  },
+        { 1, kPortAudio, PortDir::Out, 1, "audio_out" },
     };
     count = 2;
     return s_ports;

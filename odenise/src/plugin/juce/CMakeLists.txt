@@ -63,6 +63,8 @@ target_sources(odenise_plugin
         # Interface graphique
         ui/JuceEditorComponent.h
         ui/JuceEditorComponent.cpp
+        ui/AudioChainView.h
+        ui/AudioChainView.cpp
 )
 
 # ---------------------------------------------------------------------------

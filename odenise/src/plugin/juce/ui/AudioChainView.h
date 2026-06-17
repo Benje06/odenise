@@ -76,7 +76,7 @@ private:
     struct PortGeom {
         int              port_id;
         PortKind         kind;
-        odenise::PortDir dir;
+        PortDir          dir;
         juce::String     name;
         juce::Point<int> centre; // position absolue dans le composant
     };

@@ -63,7 +63,7 @@ public:
     void process(size_t num_frames) noexcept override;
 
     // [CTRL] Description statique des ports du module.
-    const odenise::PortDef* ports(int& count) const noexcept override;
+    const PortDef* ports(int& count) const noexcept override;
  
     // [CTRL] Injection du buffer de sortie pour le self-test interne.
     // Permet de fournir un buffer local sans passer par BackendContext.

@@ -68,6 +68,8 @@ ModuleInfo toModuleInfo(const OdeniseModuleInfoC& c, ModuleKind kind) {
     m.description     = c.description ? c.description : "";
     m.needs_gpu       = (c.needs_gpu != 0);
     m.backend_type_id = c.backend_type_id;
+    m.ports           = c.ports;
+    m.port_count      = c.port_count;
     return m;
 }
 

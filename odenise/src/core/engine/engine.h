@@ -43,6 +43,38 @@
 #endif
 #define MOD_PATH ODENISE_MODULE_INSTALL_DIR
 
+
+// ---------------------------------------------------------------------------
+//  Types de ports inter-modules (extensibles par entier libre).
+//  Un module tiers declare ses propres kinds (> 99) sans modifier ce fichier.
+//  Constantes predefinies :
+//    kPortAudio    = 0  -- PCM float (jaune en UI)
+//    kPortSpectral = 1  -- magnitude/phase STFT (bleu en UI)
+//    kPortCtrl     = 2  -- scalaire/vecteur de controle (rouge en UI)
+//    kPortSync     = 3  -- synchronisation de trame (violet en UI)
+// ---------------------------------------------------------------------------
+using PortKind = int;
+constexpr PortKind kPortAudio    = 0;
+constexpr PortKind kPortSpectral = 1;
+constexpr PortKind kPortCtrl     = 2;
+constexpr PortKind kPortSync     = 3;
+// reservez des plages > 99 pour les kinds tiers
+enum class PortDir { In, Out };
+ 
+// ---------------------------------------------------------------------------
+//  PortDef -- description statique d'un port d'un module.
+//  Declaree par chaque module via ports() -- valide tant que le module est
+//  charge. Zéro allocation : tableau statique dans le .cpp du module.
+// ---------------------------------------------------------------------------
+struct PortDef {
+    int         id;             // unique dans le module
+    PortKind    kind;           // kPortAudio, kPortSpectral, kPortCtrl, kPortSync, ...
+    PortDir     dir;            // In ou Out
+    int         channel_count;  // 1 = mono, 2 = stereo
+    const char* name;           // ex. "audio_in", "gate_out", "spectral_out"
+};
+
+
 //  STRUCTS POD FRONTIERE INTER-COMPILATEURS
 //
 //  Ces structs traversent la frontiere entre compilateurs differents
@@ -64,6 +96,8 @@ struct OdeniseModuleInfoC {
     int         needs_gpu;       // 0/1
     size_t      backend_type_id; // odenise::kBackendAny, kBackendCPU, kBackendCUDA, ...
                                  // ou valeur libre pour un backend tiers (>99)
+    const PortDef* ports;
+    int            port_count;
 };
 
 struct OdeniseBackendCapsC {
@@ -104,37 +138,6 @@ inline constexpr size_t kBackendCPU  = 2;
 inline constexpr size_t kBackendCUDA = 3;
 inline constexpr size_t kBackendROCm = 4;
 // reservez des plages > 99 pour les backends tiers
-
-// ---------------------------------------------------------------------------
-//  Types de ports inter-modules (extensibles par entier libre).
-//  Un module tiers declare ses propres kinds (> 99) sans modifier ce fichier.
-//  Constantes predefinies :
-//    kPortAudio    = 0  -- PCM float (jaune en UI)
-//    kPortSpectral = 1  -- magnitude/phase STFT (bleu en UI)
-//    kPortCtrl     = 2  -- scalaire/vecteur de controle (rouge en UI)
-//    kPortSync     = 3  -- synchronisation de trame (violet en UI)
-// ---------------------------------------------------------------------------
-using PortKind = int;
-constexpr PortKind kPortAudio    = 0;
-constexpr PortKind kPortSpectral = 1;
-constexpr PortKind kPortCtrl     = 2;
-constexpr PortKind kPortSync     = 3;
-// reservez des plages > 99 pour les kinds tiers
- 
-enum class PortDir { In, Out };
- 
-// ---------------------------------------------------------------------------
-//  PortDef -- description statique d'un port d'un module.
-//  Declaree par chaque module via ports() -- valide tant que le module est
-//  charge. Zéro allocation : tableau statique dans le .cpp du module.
-// ---------------------------------------------------------------------------
-struct PortDef {
-    int         id;             // unique dans le module
-    PortKind    kind;           // kPortAudio, kPortSpectral, kPortCtrl, kPortSync, ...
-    PortDir     dir;            // In ou Out
-    int         channel_count;  // 1 = mono, 2 = stereo
-    const char* name;           // ex. "audio_in", "gate_out", "spectral_out"
-};
 
 // ---------------------------------------------------------------------------
 //  Enums
@@ -276,6 +279,8 @@ struct ModuleInfo {
     bool        needs_gpu        = false;
     std::string name;
     std::string description;
+    const PortDef* ports         = nullptr;
+    int            port_count    = 0;
 };
 
 struct TestResult {                   // self-test embarque par chaque module

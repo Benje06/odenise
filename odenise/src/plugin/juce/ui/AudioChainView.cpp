@@ -40,45 +40,47 @@ void AudioChainView::rebuildBlocks() {
     blocks_.clear();
     if (!editor_) return;
 
-    const auto& graph      = editor_->graph();
-    const auto& loaded     = editor_->loaded_modules();
+    const auto& graph  = editor_->graph();
+    const auto& loaded = editor_->loaded_modules();
 
     for (const auto& nd : graph.nodes) {
         BlockGeom blk;
         blk.loaded_id = nd.loaded_id;
         blk.bounds    = juce::Rectangle<int>(nd.x, nd.y, kBlockW, kBlockH);
 
-        // Nom et kind depuis loaded_modules_.
         for (const auto& lmi : loaded) {
-            if (lmi.loaded_id == nd.loaded_id) {
-                blk.label      = juce::String(lmi.info.name);
-                blk.kind_label = juce::String(odenise::kindName(lmi.info.kind));
-                break;
+            if (lmi.id != nd.loaded_id) continue;
+
+            blk.label      = juce::String(lmi.name);
+            blk.kind_label = juce::String(odenise::kindName(lmi.kind));
+
+            blk.ports.clear();
+            if (lmi.ports && lmi.port_count > 0) {
+                for (int pi = 0; pi < lmi.port_count; ++pi) {
+                    const auto& pd = lmi.ports[pi];
+                    PortGeom pg;
+                    pg.port_id = pd.id;
+                    pg.kind    = pd.kind;
+                    pg.dir     = pd.dir;
+                    pg.name    = juce::String(pd.name ? pd.name : "");
+                    blk.ports.push_back(pg);
+                }
+            } else {
+                PortGeom pin;
+                pin.port_id = 0; pin.kind = kPortAudio;
+                pin.dir = PortDir::In; pin.name = "audio_in";
+                blk.ports.push_back(pin);
+
+                PortGeom pout;
+                pout.port_id = 1; pout.kind = kPortAudio;
+                pout.dir = PortDir::Out; pout.name = "audio_out";
+                blk.ports.push_back(pout);
             }
+            break;
         }
+
         if (blk.label.isEmpty())
             blk.label = "module #" + juce::String(static_cast<int>(nd.loaded_id));
-
-        // Ports depuis info_c() du module charge via engine.
-        // On passe par loaded_modules() qui expose LoadedModuleInfo (pas ModuleBase*).
-        // Pour les PortDef, il faut acceder a info_c() -- non disponible ici sans
-        // exposer ModuleBase*. On utilise les ports generiques par defaut (audio_in/out)
-        // tant que l'UI n'a pas acces direct a info_c().
-        // TODO : exposer get_ports(loaded_id) dans AudioEditor -> engine -> registry.
-        blk.ports.clear();
-        PortGeom pin;
-        pin.port_id = 0;
-        pin.kind    = kPortAudio;
-        pin.dir     = odenise::PortDir::In;
-        pin.name    = "audio_in";
-        blk.ports.push_back(pin);
-
-        PortGeom pout;
-        pout.port_id = 1;
-        pout.kind    = kPortAudio;
-        pout.dir     = odenise::PortDir::Out;
-        pout.name    = "audio_out";
-        blk.ports.push_back(pout);
 
         blocks_.push_back(std::move(blk));
     }
@@ -118,7 +120,7 @@ void AudioChainView::layoutBlocks() {
 void AudioChainView::computePortCentres(BlockGeom& blk) {
     std::vector<PortGeom*> ins, outs;
     for (auto& pg : blk.ports)
-        (pg.dir == odenise::PortDir::In ? ins : outs).push_back(&pg);
+        (pg.dir == PortDir::In ? ins : outs).push_back(&pg);
 
     const auto& b = blk.bounds;
     if (layout_ == Layout::Horizontal) {
@@ -170,13 +172,13 @@ void AudioChainView::drawBlock(juce::Graphics& g,
     g.drawRoundedRectangle(b.toFloat(), static_cast<float>(kCornerR), 1.5f);
 
     g.setColour(juce::Colours::white);
-    g.setFont(juce::Font(12.0f, juce::Font::bold));
+    g.setFont(juce::Font(juce::FontOptions{}.withHeight(12.0f).withStyle("Bold")));
     g.drawText(blk.label,
                b.getX() + 4, b.getY() + 8, b.getWidth() - 8, 16,
                juce::Justification::centred, true);
 
     g.setColour(juce::Colour(0xFFAABBCC));
-    g.setFont(juce::Font(10.0f));
+    g.setFont(juce::Font(juce::FontOptions{}.withHeight(10.0f)));
     g.drawText(blk.kind_label,
                b.getX() + 4, b.getY() + 26, b.getWidth() - 8, 14,
                juce::Justification::centred, true);
@@ -193,8 +195,8 @@ void AudioChainView::drawBlock(juce::Graphics& g,
         g.drawEllipse(cx - r, cy - r, r * 2.0f, r * 2.0f, 1.5f);
 
         g.setColour(pc.brighter(0.2f));
-        g.setFont(juce::Font(9.0f));
-        const bool is_in = (pg.dir == odenise::PortDir::In);
+        g.setFont(juce::Font(juce::FontOptions{}.withHeight(9.0f)));
+        const bool is_in = (pg.dir == PortDir::In);
         const int lx = is_in
             ? pg.centre.x + kPortR + 2
             : pg.centre.x - kPortR - 42;
