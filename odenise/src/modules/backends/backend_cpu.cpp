@@ -217,9 +217,10 @@ odenise::Status CpuBackendImpl::reconfigure(const odenise::BackendCaps& b_caps,
 // -----------------------------------------------------------------------
 bool CpuBackendImpl::install_module(odenise::ModuleBase*  mod,
                                     odenise::ModuleKind  kind,
-                                    size_t               position) {
+                                    size_t               position,
+                                    size_t               loaded_id) {
     if (!mod) return false;
-    const bool ok = chain_.insert(this, &ctx_, mod, kind, position);
+    const bool ok = chain_.insert(this, &ctx_, mod, kind, position, loaded_id);
     if (ok) {
         first_module_ = chain_.get_first();
         last_module_  = chain_.get_last();

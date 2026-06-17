@@ -110,7 +110,7 @@ public:
     //  Le backend est requis pour acceder aux contextes (CPU/GPU) et aux
     //  buffers de transfert pre-alloues.
     // -----------------------------------------------------------------------
-
+    
     // Installe un module a la position donnee dans la chaine.
     // ctx est le BackendContext fourni par le backend au module (scratch, stream).
     // Recable les voisins, insere un noeud de transfert si la transition
@@ -119,21 +119,25 @@ public:
     CHAIN bool install(BackendBase*    backend,
                        BackendContext* ctx,
                        ModuleBase*     mod,
-                       ModuleKind      kind);
+                       ModuleKind      kind,
+                       size_t          loaded_id = 0);
 
     // Insere un module a la position donnee (decale les suivants).
     CHAIN bool insert(BackendBase*    backend,
                       BackendContext* ctx,
                       ModuleBase*     mod,
                       ModuleKind      kind,
-                      size_t          position);
+                      size_t          position,
+                      size_t          loaded_id = 0);
 
     // Remplace le module a la position donnee.
     CHAIN bool replace(BackendBase*    backend,
                        BackendContext* ctx,
                        ModuleBase*     mod,
                        ModuleKind      kind,
-                       size_t          position);
+                       size_t          position,
+                       size_t          loaded_id = 0);
+
 
     // Retire le module a la position donnee et recable les voisins.
     CHAIN void remove(BackendBase* backend, size_t position) noexcept;
@@ -179,6 +183,7 @@ private:
         ModuleKind  kind     = ModuleKind::Suppression;
         size_t      position = 0;
         size_t      ctx_type = kBackendAny;  // type de contexte resolu
+        size_t      loaded_id = 0;
     };
 
     // Reconstruit la liste plate a partir des noeuds logiques.

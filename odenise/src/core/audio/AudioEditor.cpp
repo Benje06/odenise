@@ -265,7 +265,7 @@ void AudioEditor::rebuildGraph() {
     // (l'utilisateur peut ensuite les deplacer).
 
     int x = 20;
-    for (const auto& info : loaded_modules_) {
+    for (const auto& info : engine_->get_chain()) {
         NodeDesc nd;
         nd.loaded_id = info.id;
         nd.x         = x;

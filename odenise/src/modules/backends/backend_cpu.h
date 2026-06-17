@@ -80,10 +80,11 @@ public:
 
     // -----------------------------------------------------------------------
     //  install_module / uninstall_module
-    // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------    
     bool install_module(odenise::ModuleBase* mod,
                         odenise::ModuleKind  kind,
-                        size_t               position) override;
+                        size_t position,
+                        size_t loaded_id = 0) override;
 
     void uninstall_module(size_t position) noexcept override;
 

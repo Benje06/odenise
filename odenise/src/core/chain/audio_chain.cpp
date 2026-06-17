@@ -167,8 +167,9 @@ void AudioChain::recalculate_latency() {
 bool AudioChain::install(BackendBase*    backend,
                          BackendContext* ctx,
                          ModuleBase*     mod,
-                         ModuleKind      kind) {
-    return insert(backend, ctx, mod, kind, nodes_.size());
+                         ModuleKind      kind,
+                         size_t          loaded_id) {
+    return insert(backend, ctx, mod, kind, nodes_.size(), loaded_id);
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +179,8 @@ bool AudioChain::insert(BackendBase*    backend,
                         BackendContext* ctx,
                         ModuleBase*     mod,
                         ModuleKind      kind,
-                        size_t          position) {
+                        size_t          position,
+                        size_t          loaded_id) {
     if (!mod) return false;
 
     // Determine le contexte du module.
@@ -203,6 +205,7 @@ bool AudioChain::insert(BackendBase*    backend,
     node.kind     = kind;
     node.position = position;
     node.ctx_type = ctx_type;
+    node.loaded_id = loaded_id;
 
     auto it = nodes_.begin() + position;
     nodes_.insert(it, node);
@@ -222,7 +225,8 @@ bool AudioChain::replace(BackendBase*    backend,
                          BackendContext* ctx,
                          ModuleBase*     mod,
                          ModuleKind      kind,
-                         size_t          position) {
+                         size_t          position,
+                         size_t          loaded_id) {
 
     auto it = nodes_.begin() + position;
     if (it != nodes_.end()) {
@@ -230,7 +234,7 @@ bool AudioChain::replace(BackendBase*    backend,
         nodes_.erase(it);
     }
 
-    return insert(backend, ctx, mod, kind, position);
+    return insert(backend, ctx, mod, kind, position, loaded_id);
 }
 
 // ---------------------------------------------------------------------------

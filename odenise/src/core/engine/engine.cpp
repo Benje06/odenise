@@ -225,6 +225,11 @@ public:
         return out;
     }
 
+    std::vector<ModuleInfo> get_chain() const override {
+        if (!backend_) return {};
+        return backend_->get_chain();
+    }
+
     TestResult selfTest(size_t available_id) const override {
         return const_cast<EngineImpl*>(this)->registry_.self_test(available_id);
     }
@@ -402,7 +407,7 @@ private:
         }
         module_id_ = loaded_id;
 
-        if (!backend_ || !backend_->install_module(module_, static_cast<ModuleKind>(module_->info_c()->kind), 0) ) {
+        if (!backend_ || !backend_->install_module(module_, static_cast<ModuleKind>(module_->info_c()->kind), 0, loaded_id) ) {
             std::string msg_err = error(__func__,
                 _("Module install chainning failed"),
                 _("id=") + std::to_string(loaded_id));

@@ -502,6 +502,10 @@ public:
     // Valide tant que le module est charge. Jamais nul.
     virtual const OdeniseTestResultC* self_test_c() const noexcept = 0;
 
+
+    // Vue ordonnee de la chaine du backend actif, dans l'ordre de traitement.
+    virtual std::vector<ModuleInfo> get_chain() const = 0;
+
     // [CTRL] Installe un module dans la chaine a la position donnee.
     // Le backend choisit le contexte adequat (CPU ou GPU) selon le
     // backend_type_id declare par le module, cable les pointeurs,
@@ -509,7 +513,8 @@ public:
     // position = 0 : premier de la chaine.
     virtual bool install_module(ModuleBase* mod,
                                 ModuleKind  kind,
-                                size_t      position) = 0;
+                                size_t      position,
+                                size_t      loaded_id = 0) = 0;
 
     // [CTRL] Retire un module de la chaine et recable les voisins.
     virtual void uninstall_module(size_t position) noexcept = 0;
@@ -617,6 +622,8 @@ public:
 
     virtual std::vector<ModuleInfo> loaded_modules(ModuleKind kind) const = 0;
     virtual std::vector<ModuleInfo> loaded_modules() const = 0;
+    // Vue ordonnee de la chaine du backend actif, dans l'ordre de traitement.
+    virtual std::vector<ModuleInfo> get_chain() const = 0;
 
     // [CTRL] execute le self-test embarque d'un module.
     virtual TestResult selfTest(size_t module_id) const = 0;
