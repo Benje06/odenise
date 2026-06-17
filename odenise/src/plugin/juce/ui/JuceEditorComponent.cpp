@@ -295,12 +295,12 @@ namespace odenise::plugin {
         addAndMakeVisible(label_module_info_);
         
         // -- Vue chaine --
-        chain_view_.refresh(); // vide au demarrage, se peuple apres selectBackend
-        addAndMakeVisible(chain_view_);
+        chain_view_ = std::make_unique<AudioChainView>(plugin_.layer()->editor());
+        addAndMakeVisible(*chain_view_);
     
         btn_layout_toggle_.setButtonText("H/V");
         btn_layout_toggle_.onClick = [this] {
-            chain_view_.toggleLayout();
+            chain_view_->toggleLayout();
         };
         addAndMakeVisible(btn_layout_toggle_);
 
@@ -421,7 +421,8 @@ namespace odenise::plugin {
         const int btn_w = 36;
         btn_layout_toggle_.setBounds(kWidth - btn_w - kGap, y, btn_w, kRowH);
         y += kRowH + kGap / 2;
-        chain_view_.setBounds(kGap, y, kWidth - (2 * kGap), kChainViewH);
+        if(chain_view_)
+            chain_view_->setBounds(kGap, y, kWidth - (2 * kGap), kChainViewH);
 
         // ---- Vu metres ------------------------------------------------
         const int vu_h = kHeight - y;
@@ -461,8 +462,7 @@ namespace odenise::plugin {
             std::string infos = editor->get_module_info(cb->getSelectedId() - 1);
             label_module_info_.setText(infos, juce::dontSendNotification);
             // Reconstruit le graphe UI apres ajout d'un module.
-            editor->rebuildGraph();
-            chain_view_.refresh();
+            if (chain_view_) chain_view_->refresh();
             // TODO: afficher le modules etc...
         }
         else if (cb == &combo_bcknd_){

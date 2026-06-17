@@ -106,7 +106,7 @@ private:
     juce::ComboBox combo_mods_;       // modules
     juce::Label    label_module_info_;
     // -- Vue graphique de la chaine --
-    AudioChainView chain_view_;           // representaiton visuelle de l'AudioChain
+    std::unique_ptr<AudioChainView> chain_view_;           // representaiton visuelle de l'AudioChain
     juce::TextButton btn_layout_toggle_;  // bascule horizontal <-> vertical
 
     // processing latencie
