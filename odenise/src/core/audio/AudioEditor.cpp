@@ -184,7 +184,7 @@ bool AudioEditor::selectBackend(size_t bcknd_combo_id){
 }
 
 // ----------------------------------------------------------------------------
-//  Module
+//  Module (available)
 // ----------------------------------------------------------------------------
 
 void AudioEditor::get_modules(){
@@ -205,22 +205,45 @@ bool AudioEditor::selectModule(int mods_combo_id, const RuntimeConfig& cfg){
 }
 
 // ----------------------------------------------------------------------------
+//  Module (loaded)
+// ----------------------------------------------------------------------------
+void AudioEditor::get_loaded_modules() {
+    if (!engine_) return;
+    loaded_modules_ = engine_->loaded_modules();
+}
+ 
+const std::vector<ModuleInfo>& AudioEditor::loaded_modules() const noexcept {
+    return loaded_modules_;
+}
+// ----------------------------------------------------------------------------
 //  Configuration de la chaine
 // ----------------------------------------------------------------------------
 
 bool AudioEditor::insertModule(size_t available_id, size_t position,
                                const RuntimeConfig& cfg) {
     if (!processor_) return false;
-    return processor_->insertModule(available_id, position, cfg);
+    const bool status = processor_->insertModule(available_id, position, cfg);
+    if (status) {
+        get_loaded_modules();
+        rebuildGraph();
+    }
+    return status;
 }
 bool AudioEditor::replaceModule(size_t available_id, size_t position,
                                 const RuntimeConfig& cfg) {
     if (!processor_) return false;
-    return processor_->replaceModule(available_id, position, cfg);
+    const bool status = processor_->replaceModule(available_id, position, cfg);
+    if (status) {
+        get_loaded_modules();
+        rebuildGraph();
+    }
+    return status;
 }
 void AudioEditor::removeModule(size_t position) {
     if (!processor_) return;
     processor_->unBindModule(position);
+    get_loaded_modules();
+    rebuildGraph();
 }
 bool AudioEditor::reconfigureModule(size_t loaded_id, const RuntimeConfig& cfg) {
     if (!processor_) return false;
@@ -240,10 +263,9 @@ void AudioEditor::rebuildGraph() {
     // Reconstruit les noeuds depuis la liste des modules charges.
     // Les positions UI sont initialisees en disposition horizontale par defaut
     // (l'utilisateur peut ensuite les deplacer).
-    const auto loaded = engine_->loaded_modules();
 
     int x = 20;
-    for (const auto& info : loaded) {
+    for (const auto& info : loaded_modules_) {
         NodeDesc nd;
         nd.loaded_id = static_cast<int>(info.id);
         nd.x         = x;
@@ -265,7 +287,7 @@ void AudioEditor::rebuildGraph() {
     }
 }
  
-void AudioEditor::moveNode(int loaded_id, int x, int y) {
+void AudioEditor::moveNode(size_t loaded_id, int x, int y) {
     for (auto& nd : graph_.nodes) {
         if (nd.loaded_id == loaded_id) {
             nd.x = x;
@@ -275,8 +297,8 @@ void AudioEditor::moveNode(int loaded_id, int x, int y) {
     }
 }
  
-bool AudioEditor::connectPorts(int from_loaded_id, int from_port_id,
-                               int to_loaded_id,   int to_port_id) {
+bool AudioEditor::connectPorts(size_t from_loaded_id, int from_port_id,
+                               size_t to_loaded_id,   int to_port_id) {
     // Verifie que les deux noeuds existent dans le graphe.
     bool from_ok = false, to_ok = false;
     for (const auto& nd : graph_.nodes) {
@@ -305,7 +327,7 @@ bool AudioEditor::connectPorts(int from_loaded_id, int from_port_id,
     return true;
 }
  
-void AudioEditor::disconnectPort(int to_loaded_id, int to_port_id) {
+void AudioEditor::disconnectPort(size_t to_loaded_id, int to_port_id) {
     graph_.edges.erase(
         std::remove_if(graph_.edges.begin(), graph_.edges.end(),
             [&](const EdgeDesc& ed) {

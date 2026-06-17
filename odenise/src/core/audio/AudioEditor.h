@@ -70,12 +70,12 @@ class AudioProcessor;
 //               L'AudioEditor maintient ce miroir UI et le synchronise.
 // ---------------------------------------------------------------------------
 struct PortRef {
-    int node_loaded_id; // loaded_id du module (registry.loaded_)
+    size_t node_loaded_id; // loaded_id du module (registry.loaded_)
     int port_id;        // id du port dans ce module (PortDef::id)
 };
  
 struct NodeDesc {
-    int loaded_id;  // id dans registry.loaded_
+    size_t loaded_id;  // id dans registry.loaded_
     int x;          // position UI en pixels (geree par AudioChainView)
     int y;
 };
@@ -173,7 +173,6 @@ public:
     // -----------------------------------------------------------------------
     AUDIO void   get_backends();
     AUDIO const  std::vector<odenise::ModuleInfo>& backends() const noexcept;
-
     AUDIO bool   selectBackend(size_t bcknd_combo_id);
     AUDIO size_t selectedBackendId() const noexcept { return selected_backend_id_; }
 
@@ -185,6 +184,13 @@ public:
     AUDIO const  std::vector<odenise::ModuleInfo>& modules() const noexcept;
     AUDIO bool   selectModule(int mods_combo_id, const RuntimeConfig& cfg);
     AUDIO size_t selectedModuleId() const noexcept { return selected_module_id_; }
+    // -----------------------------------------------------------------------
+    //  Modules charges -- vue de registry.loaded_ pour l'UI.
+    //  Appele apres insertModule/replaceModule/removeModule pour rafraichir.
+    // -----------------------------------------------------------------------
+    AUDIO void   get_loaded_modules();
+    AUDIO std::string get_loaded_module_info(int module_id);
+    AUDIO const  std::vector<odenise::ModuleInfo>& loaded_modules() const noexcept;
 
     // -----------------------------------------------------------------------
     //  Configuration de la chaine (unique, tous kinds confondus).
@@ -200,21 +206,21 @@ public:
     //  L'UI appelle rebuildGraph() apres chaque modification structurelle,
     //  puis lit graph() pour rafraichir AudioChainView.
     // -----------------------------------------------------------------------
-    AUDIO void              rebuildGraph();
+    AUDIO void rebuildGraph();
     AUDIO const ChainGraph& graph() const noexcept { return graph_; }
  
     // Deplace un noeud dans l'espace UI (modifie uniquement x,y -- pas l'AudioChain).
-    AUDIO void moveNode(int loaded_id, int x, int y);
+    AUDIO void moveNode(size_t loaded_id, int x, int y);
  
     // Ajoute une connexion UI et la pousse dans l'AudioChain.
     // from_loaded_id/from_port -> to_loaded_id/to_port.
     // Retourne false si les types de ports sont incompatibles ou si le
     // loaded_id est inconnu.
-    AUDIO bool connectPorts(int from_loaded_id, int from_port_id,
-                            int to_loaded_id,   int to_port_id);
+    AUDIO bool connectPorts(size_t from_loaded_id, int from_port_id,
+                            size_t to_loaded_id,   int to_port_id);
  
     // Supprime la connexion arrivant sur le port d'entree specifie.
-    AUDIO void disconnectPort(int to_loaded_id, int to_port_id);
+    AUDIO void disconnectPort(size_t to_loaded_id, int to_port_id);
 
     // -----------------------------------------------------------------------
     //  Monitoring -- cache local mis a jour par poll().
@@ -236,6 +242,7 @@ private:
 
     std::vector<ModuleInfo>         backends_;
     std::vector<ModuleInfo>         modules_;
+    std::vector<ModuleInfo>         loaded_modules_;
     std::vector<AudioDriver>        drivers_;
     std::vector<AudioInterfaceInfo> inputs_;
     std::vector<AudioInterfaceInfo> outputs_;
